@@ -657,8 +657,8 @@ function ReportView({ report, onSendEmails, emailSending, emailSent, onBack }) {
       </div>
 
       <div style={styles.tabBar}>
-        {["overview","scores","emails","flags"].map(t=>(
-          <button key={t} style={activeTab===t?styles.tabActive:styles.tab} onClick={()=>setActiveTab(t)}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>
+        {["overview","scores","emails","flags","correct"].map(t=>(
+          <button key={t} style={activeTab===t?styles.tabActive:styles.tab} onClick={()=>setActiveTab(t)}>{t==="correct"?"✏ Correct Record":t.charAt(0).toUpperCase()+t.slice(1)}</button>
         ))}
       </div>
 
@@ -712,7 +712,67 @@ function ReportView({ report, onSendEmails, emailSending, emailSent, onBack }) {
           )}
         </div>
       )}
+      {activeTab==="correct"&&(
+        <CorrectionForm report={report} />
+      )}
     </main>
+  );
+}
+
+// ── CORRECTION FORM ───────────────────────────────────────────
+function CorrectionForm({ report }) {
+  const [form, setForm] = useState({ correctedInspectorName:"", correctedCompanyName:"", reason:"", email:"" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const sf = k => v => setForm(f=>({...f,[k]:v}));
+
+  const submit = async () => {
+    if (!form.correctedInspectorName && !form.correctedCompanyName) { setError("Please provide at least one corrected field."); return; }
+    if (!form.email) { setError("Please provide your email address."); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/correction", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"checkout", reportId:report.id, inspectorName:report.inspectorName, companyName:report.companyName, correctedInspectorName:form.correctedInspectorName, correctedCompanyName:form.correctedCompanyName, reason:form.reason, email:form.email }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else setError(data.error || "Could not start checkout.");
+    } catch { setError("Network error. Please try again."); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={styles.tabContent}>
+      <div style={{...styles.summaryBlock, border:"1px solid rgba(200,168,75,0.3)", background:"rgba(200,168,75,0.03)", marginBottom:24}}>
+        <h3 style={styles.blockTitle}>Request a Record Correction</h3>
+        <p style={{color:"#888",fontSize:14,lineHeight:1.75}}>Are you the inspector listed in this report? If your name or company name was misspelled in the original inspection file, you can request a correction for a <strong style={{color:"#C8A84B"}}>one-time $20 fee</strong>. All requests are reviewed by our team before being applied.</p>
+      </div>
+      {error && <div style={{padding:"10px 14px",borderRadius:6,background:"rgba(231,76,60,0.1)",border:"1px solid #e74c3c",color:"#e74c3c",fontSize:13,marginBottom:16}}>{error}</div>}
+      <div style={styles.formCard}>
+        <div style={styles.formCardTitle}>Current Record</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <div><div style={{color:"#555",fontSize:11,letterSpacing:"0.08em",marginBottom:4}}>INSPECTOR NAME</div><div style={{color:"#e8e8e8",fontSize:14,fontFamily:"'DM Mono',monospace"}}>{report.inspectorName||"Not listed"}</div></div>
+          <div><div style={{color:"#555",fontSize:11,letterSpacing:"0.08em",marginBottom:4}}>COMPANY</div><div style={{color:"#e8e8e8",fontSize:14,fontFamily:"'DM Mono',monospace"}}>{report.companyName||"Not listed"}</div></div>
+        </div>
+      </div>
+      <div style={{...styles.formCard,marginTop:16}}>
+        <div style={styles.formCardTitle}>Requested Corrections</div>
+        <p style={{color:"#555",fontSize:12,marginBottom:20}}>Leave a field blank if it does not need to be changed.</p>
+        <div style={{marginBottom:16}}><label style={styles.label}>Corrected Inspector Name</label><input style={styles.input} placeholder={report.inspectorName||"Enter correct name"} value={form.correctedInspectorName} onChange={e=>sf("correctedInspectorName")(e.target.value)} /></div>
+        <div style={{marginBottom:16}}><label style={styles.label}>Corrected Company Name</label><input style={styles.input} placeholder={report.companyName||"Enter correct company"} value={form.correctedCompanyName} onChange={e=>sf("correctedCompanyName")(e.target.value)} /></div>
+        <div style={{marginBottom:16}}><label style={styles.label}>Reason for Correction *</label><textarea style={{...styles.textarea,minHeight:80}} placeholder="e.g. My name was misspelled — should be John Smith not Jon Smith" value={form.reason} onChange={e=>sf("reason")(e.target.value)} rows={3}/></div>
+        <div style={{marginBottom:4}}><label style={styles.label}>Your Email Address *</label><input style={styles.input} type="email" placeholder="your@email.com" value={form.email} onChange={e=>sf("email")(e.target.value)} /><p style={{color:"#444",fontSize:11,marginTop:6}}>We will notify you when your correction has been reviewed.</p></div>
+      </div>
+      <div style={{...styles.summaryBlock,marginTop:16,border:"1px solid #1e1e1e"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{color:"#f0f0f0",fontWeight:700,fontSize:16}}>Correction Request Fee</div><div style={{color:"#666",fontSize:13,marginTop:4}}>One-time · Reviewed within 2 business days · Non-refundable if approved</div></div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontWeight:800,fontSize:28,color:"#C8A84B"}}>$20</div>
+        </div>
+      </div>
+      <button onClick={submit} disabled={loading} style={{...styles.ctaPrimary,marginTop:20,opacity:loading?0.7:1}}>{loading?"Processing...":"Pay $20 & Submit Correction →"}</button>
+      <p style={{color:"#333",fontSize:11,marginTop:12,lineHeight:1.7}}>By submitting, you confirm that the requested correction is accurate and that you are the licensed inspector associated with this record. False correction requests may result in account suspension.</p>
+    </div>
   );
 }
 
