@@ -1,10 +1,3 @@
-const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -12,74 +5,141 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    return res.status(500).json({ error: "Server configuration error — missing Supabase keys." });
+  }
+
   const { action, email, password, name, role, licenseNumber } = req.body;
 
   try {
+    // ── SIGN UP ──────────────────────────────────────────────
     if (action === "signup") {
       if (role === "realtor" && !licenseNumber) {
         return res.status(400).json({ error: "Realtors must provide a license number." });
       }
-      const { data, error } = await supabase.auth.admin.createUser({
-        email, password,
-        email_confirm: true,
-        user_metadata: { name, role, licenseNumber: licenseNumber || null },
-      });
-      if (error) return res.status(400).json({ error: error.message });
 
-      await supabase.from("profiles").insert({
-        id: data.user.id,
-        email, name, role,
-        license_number: licenseNumber || null,
-        trial_started_at: role === "realtor" ? new Date().toISOString() : null,
-        inspection_count: 0,
-        subscription_status: role === "realtor" ? "trial" : "free",
+      // Create user via Supabase Admin REST API
+      const signupRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { name, role, licenseNumber: licenseNumber || null },
+        }),
+      });
+
+      const signupData = await signupRes.json();
+      if (!signupRes.ok) {
+        return res.status(400).json({ error: signupData.message || signupData.error || "Signup failed" });
+      }
+
+      const userId = signupData.id;
+
+      // Insert profile row
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify({
+          id: userId,
+          email,
+          name: name || "",
+          role: role || "buyer",
+          license_number: licenseNumber || null,
+          trial_started_at: role === "realtor" ? new Date().toISOString() : null,
+          inspection_count: 0,
+          subscription_status: role === "realtor" ? "trial" : "free",
+        }),
       });
 
       return res.status(200).json({ success: true });
     }
 
+    // ── SIGN IN ──────────────────────────────────────────────
     if (action === "signin") {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return res.status(401).json({ error: "Invalid email or password." });
+      const signinRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_KEY,
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      const { data: profile } = await supabase
-        .from("profiles").select("*").eq("id", data.user.id).single();
+      const signinData = await signinRes.json();
+      if (!signinRes.ok) {
+        return res.status(401).json({ error: "Invalid email or password." });
+      }
+
+      const accessToken = signinData.access_token;
+      const userId = signinData.user?.id;
+
+      // Get profile
+      const profileRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=*`,
+        {
+          headers: {
+            "apikey": SUPABASE_KEY,
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+          },
+        }
+      );
+      const profiles = await profileRes.json();
+      const profile = profiles[0] || null;
 
       // Check trial expiry
       if (profile?.role === "realtor" && profile?.subscription_status === "trial") {
         const trialStart = new Date(profile.trial_started_at);
         const daysSince = (Date.now() - trialStart) / (1000 * 60 * 60 * 24);
-        if (daysSince > 14 && profile.inspection_count < 20) {
-          await supabase.from("profiles")
-            .update({ subscription_status: "expired" }).eq("id", data.user.id);
+        if (daysSince > 14 && (profile.inspection_count || 0) < 20) {
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_KEY,
+              "Authorization": `Bearer ${SUPABASE_KEY}`,
+            },
+            body: JSON.stringify({ subscription_status: "expired" }),
+          });
           profile.subscription_status = "expired";
         }
-        if (profile.inspection_count >= 20) {
-          await supabase.from("profiles")
-            .update({ subscription_status: "active" }).eq("id", data.user.id);
+        if ((profile.inspection_count || 0) >= 20) {
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_KEY,
+              "Authorization": `Bearer ${SUPABASE_KEY}`,
+            },
+            body: JSON.stringify({ subscription_status: "active" }),
+          });
           profile.subscription_status = "active";
         }
       }
 
       return res.status(200).json({
-        user: data.user,
-        session: data.session,
+        session: { access_token: accessToken },
         profile,
       });
     }
 
-    if (action === "profile") {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (error) return res.status(401).json({ error: "Unauthorized" });
-      const { data: profile } = await supabase
-        .from("profiles").select("*").eq("id", user.id).single();
-      return res.status(200).json({ user, profile });
-    }
-
     return res.status(400).json({ error: "Unknown action" });
+
   } catch (err) {
     console.error("auth error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Server error: " + err.message });
   }
 };
