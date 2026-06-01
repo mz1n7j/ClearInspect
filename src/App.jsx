@@ -258,6 +258,8 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [session, setSession] = useState(null);
+  const [selectedInspector, setSelectedInspector] = useState(null);
+  const [sharingReport, setSharingReport] = useState(null);
   const fileRef = useRef();
 
   const [form, setForm] = useState({ inspectorName:"", companyName:"", licenseNo:"", street:"", city:"", state:"", zip:"", buyerEmail:"", sellerEmail:"", realtorEmail:"", reportText:"", fileName:"" });
@@ -370,6 +372,7 @@ export default function App() {
     <div style={styles.root}>
       {toast && <div style={{...styles.toast,borderColor:toast.type==="error"?"#e74c3c":"#C8A84B",color:toast.type==="error"?"#e74c3c":"#C8A84B"}}>{toast.msg}</div>}
       {showAuth && <AuthModal onClose={()=>setShowAuth(false)} onAuth={onAuth} />}
+      {sharingReport && <ShareModal report={sharingReport} onClose={()=>setSharingReport(null)} showToast={showToast} />}
 
       <header style={styles.header}>
         <div style={styles.headerInner}>
@@ -377,6 +380,7 @@ export default function App() {
           <nav style={{display:"flex",gap:8,alignItems:"center"}}>
             <button style={view==="upload"?styles.navActive:styles.navBtn} onClick={()=>{setView("upload");setUploadStep(0);}}>Upload Report</button>
             <button style={view==="database"?styles.navActive:styles.navBtn} onClick={()=>setView("database")}>Registry ({reports.length})</button>
+            <button style={view==="directory"?styles.navActive:styles.navBtn} onClick={()=>setView("directory")}>Find Inspectors</button>
             {session ? (
               <>
                 <button style={view==="account"?styles.navActive:styles.navBtn} onClick={()=>setView("account")}>Account {session.profile?.subscription_status==="trial"?"🕐":session.profile?.subscription_status==="expired"?"⚠️":""}</button>
@@ -533,7 +537,7 @@ export default function App() {
 
       {/* ── REPORT ── */}
       {view==="report"&&analysisResult&&(
-        <ReportView report={analysisResult} onSendEmails={sendEmails} emailSending={emailSending} emailSent={emailSent} onBack={()=>setView("database")} />
+        <ReportView report={analysisResult} onSendEmails={sendEmails} emailSending={emailSending} emailSent={emailSent} onBack={()=>setView("database")} onShare={()=>setSharingReport(analysisResult)} />
       )}
 
       {/* ── DATABASE ── */}
@@ -560,7 +564,10 @@ export default function App() {
                   <p style={{color:"#888",fontSize:13,lineHeight:1.6}}>{r.analysis.summary?.slice(0,120)}…</p>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16}}>
                     <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",padding:"3px 10px",borderRadius:4,border:"1px solid",fontWeight:700,background:r.analysis.fraudRisk==="High"?"#3a1010":r.analysis.fraudRisk==="Moderate"?"#2d2000":"#0d2b1a",color:r.analysis.fraudRisk==="High"?"#e74c3c":r.analysis.fraudRisk==="Moderate"?"#C8A84B":"#2ecc71",borderColor:r.analysis.fraudRisk==="High"?"#e74c3c":r.analysis.fraudRisk==="Moderate"?"#C8A84B":"#2ecc71"}}>{r.analysis.fraudRisk} Risk</span>
+                    <div style={{display:"flex",gap:8}}>
+                    <button style={{background:"none",border:"1px solid #2a2a2a",color:"#888",cursor:"pointer",fontSize:12,fontFamily:"inherit",padding:"4px 10px",borderRadius:5}} onClick={e=>{e.stopPropagation();setSharingReport(r);}}>Share</button>
                     <button style={{background:"none",border:"none",color:"#C8A84B",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}} onClick={()=>viewReport(r)}>Full Review →</button>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -572,13 +579,22 @@ export default function App() {
       {/* ── ACCOUNT ── */}
       {view==="account"&&session&&<AccountPage profile={session.profile} token={session.token} />}
 
+      {/* ── INSPECTOR DIRECTORY ── */}
+      {view==="directory"&&<InspectorDirectory onRegister={()=>setView("inspector_register")} />}
+
+      {/* ── INSPECTOR REGISTER ── */}
+      {view==="inspector_register"&&<InspectorRegister onBack={()=>setView("directory")} showToast={showToast} />}
+
+      {/* ── INSPECTOR PROFILE ── */}
+      {view==="inspector_profile"&&selectedInspector&&<InspectorProfile inspector={selectedInspector} onBack={()=>setView("directory")} />}
+
       <Disclaimer />
     </div>
   );
 }
 
 // ── REPORT VIEW ───────────────────────────────────────────────
-function ReportView({ report, onSendEmails, emailSending, emailSent, onBack }) {
+function ReportView({ report, onSendEmails, emailSending, emailSent, onBack, onShare }) {
   const a = report.analysis;
   const [activeTab, setActiveTab] = useState("overview");
   const [pdfExporting, setPdfExporting] = useState(false);
@@ -646,6 +662,9 @@ function ReportView({ report, onSendEmails, emailSending, emailSent, onBack }) {
           <div style={{fontSize:28,fontFamily:"'DM Mono',monospace",fontWeight:700,color:a.inspectorGrade==="A"?"#2ecc71":a.inspectorGrade==="B"?"#C8A84B":"#e74c3c"}}>{a.inspectorGrade}</div>
           <button onClick={exportToPDF} disabled={pdfExporting} style={{background:"transparent",border:"1px solid #C8A84B",color:pdfExporting?"#555":"#C8A84B",padding:"8px 16px",borderRadius:6,cursor:pdfExporting?"not-allowed":"pointer",fontSize:12,fontFamily:"'DM Mono',monospace",fontWeight:700,display:"flex",alignItems:"center",gap:7}}>
             {pdfExporting?<><span style={styles.spinner}/> Exporting...</>:<>↓ Export PDF</>}
+          </button>
+          <button onClick={onShare} style={{background:"transparent",border:"1px solid #3498db",color:"#3498db",padding:"8px 16px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace",fontWeight:700,display:"flex",alignItems:"center",gap:7}}>
+            ↗ Share Report
           </button>
         </div>
       </div>
@@ -773,6 +792,376 @@ function CorrectionForm({ report }) {
       <button onClick={submit} disabled={loading} style={{...styles.ctaPrimary,marginTop:20,opacity:loading?0.7:1}}>{loading?"Processing...":"Pay $20 & Submit Correction →"}</button>
       <p style={{color:"#333",fontSize:11,marginTop:12,lineHeight:1.7}}>By submitting, you confirm that the requested correction is accurate and that you are the licensed inspector associated with this record. False correction requests may result in account suspension.</p>
     </div>
+  );
+}
+
+
+// ── SHARE MODAL ───────────────────────────────────────────────
+function ShareModal({ report, onClose, showToast }) {
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [shareLink, setShareLink] = useState("");
+
+  const send = async () => {
+    if (!email) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send", reportId: report.id, recipientEmail: email, inspectorName: report.inspectorName, propertyAddress: report.propertyAddress }),
+      });
+      const data = await res.json();
+      if (data.success) { setSent(true); setShareLink(data.shareLink); showToast("Share link generated! Recipient must create an account to view."); }
+      else showToast(data.error || "Failed to send.", "error");
+    } catch { showToast("Network error.", "error"); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <h3 style={{ color:"#f0f0f0", fontSize:18, fontWeight:700 }}>Share Report</h3>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:"#555", cursor:"pointer", fontSize:20 }}>✕</button>
+        </div>
+        <div style={{ background:"#0a0a0a", border:"1px solid #1e1e1e", borderRadius:8, padding:"14px", marginBottom:20 }}>
+          <div style={{ color:"#C8A84B", fontSize:12, fontFamily:"'DM Mono',monospace", marginBottom:6 }}>REPORT</div>
+          <div style={{ color:"#e8e8e8", fontSize:14, fontWeight:600 }}>{report.inspectorName}</div>
+          <div style={{ color:"#666", fontSize:12 }}>📍 {report.propertyAddress}</div>
+        </div>
+        {!sent ? (
+          <>
+            <p style={{ color:"#666", fontSize:13, lineHeight:1.65, marginBottom:16 }}>Enter the recipient's email. They will receive a secure link and <strong style={{ color:"#C8A84B" }}>must create a free InspectorTrust account</strong> to view the full report.</p>
+            <label style={styles.label}>Recipient Email Address</label>
+            <input style={{ ...styles.input, marginBottom:16 }} type="email" placeholder="recipient@email.com" value={email} onChange={e => setEmail(e.target.value)} />
+            <button onClick={send} disabled={sending} style={{ ...styles.ctaPrimary, width:"100%", justifyContent:"center", opacity:sending?0.7:1 }}>
+              {sending ? "Sending..." : "Send Share Link →"}
+            </button>
+          </>
+        ) : (
+          <div>
+            <div style={{ padding:"16px", background:"rgba(46,204,113,0.08)", border:"1px solid rgba(46,204,113,0.2)", borderRadius:8, marginBottom:16 }}>
+              <p style={{ color:"#2ecc71", fontSize:14, fontWeight:600, marginBottom:8 }}>✓ Share link generated!</p>
+              <p style={{ color:"#666", fontSize:13 }}>The recipient must create a free account to access the report. Link expires in 7 days.</p>
+            </div>
+            <div style={{ background:"#0a0a0a", border:"1px solid #222", borderRadius:6, padding:"10px 12px", fontFamily:"'DM Mono',monospace", fontSize:11, color:"#888", wordBreak:"break-all" }}>{shareLink}</div>
+            <button onClick={() => { navigator.clipboard?.writeText(shareLink); showToast("Link copied!"); }} style={{ ...styles.ctaSecondary, width:"100%", marginTop:12, justifyContent:"center" }}>Copy Link</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── INSPECTOR DIRECTORY ───────────────────────────────────────
+function InspectorDirectory({ onRegister }) {
+  const [inspectors, setInspectors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState({ name:"", state:"", city:"" });
+  const [selected, setSelected] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/inspector", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"search", ...search }),
+      });
+      const data = await res.json();
+      setInspectors(data.inspectors || []);
+    } catch { setInspectors([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const gradeColor = g => g==="A"?"#2ecc71":g==="B"?"#C8A84B":g==="C"?"#e67e22":"#e74c3c";
+
+  if (selected) return <InspectorProfile inspector={selected} onBack={()=>setSelected(null)} />;
+
+  return (
+    <main style={styles.main}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:32, flexWrap:"wrap", gap:16 }}>
+        <div>
+          <h2 style={styles.pageTitle}>Inspector Directory</h2>
+          <p style={{ color:"#666", fontSize:14 }}>Find verified, rated home inspectors in your area.</p>
+        </div>
+        <button style={styles.ctaPrimary} onClick={onRegister}>Register as Inspector — $50/yr →</button>
+      </div>
+
+      {/* Search bar */}
+      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr auto", gap:12, marginBottom:32, background:"#111", border:"1px solid #1e1e1e", borderRadius:12, padding:"20px" }}>
+        <div>
+          <label style={styles.label}>Inspector or Company Name</label>
+          <input style={styles.input} placeholder="Search inspectors..." value={search.name} onChange={e=>setSearch(s=>({...s,name:e.target.value}))} />
+        </div>
+        <div>
+          <label style={styles.label}>City</label>
+          <input style={styles.input} placeholder="Austin" value={search.city} onChange={e=>setSearch(s=>({...s,city:e.target.value}))} />
+        </div>
+        <div>
+          <label style={styles.label}>State</label>
+          <input style={styles.input} placeholder="TX" maxLength={2} value={search.state} onChange={e=>setSearch(s=>({...s,state:e.target.value.toUpperCase()}))} />
+        </div>
+        <div style={{ display:"flex", alignItems:"flex-end" }}>
+          <button style={styles.ctaPrimary} onClick={load}>Search</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign:"center", padding:"60px 0" }}>
+          <span style={{ ...styles.spinner, width:32, height:32, borderWidth:3, display:"inline-block" }} />
+          <p style={{ color:"#555", marginTop:16 }}>Loading inspectors...</p>
+        </div>
+      ) : inspectors.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"60px 0", border:"1px dashed #1e1e1e", borderRadius:12 }}>
+          <div style={{ fontSize:48, marginBottom:16 }}>🔍</div>
+          <p style={{ color:"#666", marginBottom:8 }}>No verified inspectors found in this area yet.</p>
+          <p style={{ color:"#444", fontSize:13 }}>Are you an inspector? Be the first to register.</p>
+          <button style={{ ...styles.ctaPrimary, marginTop:20 }} onClick={onRegister}>Register Now →</button>
+        </div>
+      ) : (
+        <div style={styles.cardGrid}>
+          {inspectors.map((ins, i) => (
+            <div key={ins.id || i} style={{ ...styles.registryCard, cursor:"pointer" }} onClick={()=>setSelected(ins)}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
+                <div>
+                  <div style={{ fontSize:17, fontWeight:700, color:"#f0f0f0", marginBottom:2 }}>
+                    {ins.conflict_flag && <span style={{ fontSize:12, color:"#e74c3c", marginRight:8 }}>⚠</span>}
+                    {ins.name}
+                  </div>
+                  <div style={{ color:"#555", fontSize:13 }}>{ins.company_name || "Independent"}</div>
+                </div>
+                {ins.avg_grade && (
+                  <div style={{ width:40, height:40, borderRadius:8, background:`${gradeColor(ins.avg_grade)}15`, border:`2px solid ${gradeColor(ins.avg_grade)}`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Mono',monospace", fontWeight:800, fontSize:18, color:gradeColor(ins.avg_grade) }}>
+                    {ins.avg_grade}
+                  </div>
+                )}
+              </div>
+              <div style={{ color:"#666", fontSize:12, marginBottom:12 }}>📍 {[ins.city, ins.state].filter(Boolean).join(", ") || "Location not listed"}</div>
+              {ins.avg_trust_score && (
+                <div style={{ marginBottom:12 }}>
+                  <BalanceBar score={ins.avg_balance_score || 50} />
+                </div>
+              )}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ display:"flex", gap:8 }}>
+                  {ins.avg_trust_score && <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:"#C8A84B", background:"rgba(200,168,75,0.1)", padding:"3px 8px", borderRadius:4 }}>Trust {ins.avg_trust_score}/100</span>}
+                  <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:"#2ecc71", background:"rgba(46,204,113,0.08)", padding:"3px 8px", borderRadius:4 }}>✓ Verified</span>
+                  {ins.report_count && <span style={{ fontSize:11, color:"#555" }}>{ins.report_count} report{ins.report_count!==1?"s":""}</span>}
+                </div>
+                <span style={{ color:"#C8A84B", fontSize:13, fontWeight:600 }}>View Profile →</span>
+              </div>
+              {ins.conflict_flag && (
+                <div style={{ marginTop:12, padding:"8px 12px", background:"rgba(231,76,60,0.08)", border:"1px solid rgba(231,76,60,0.2)", borderRadius:6 }}>
+                  <span style={{ color:"#e74c3c", fontSize:11, fontFamily:"'DM Mono',monospace" }}>⚠ CONFLICT OF INTEREST FLAG — This inspector may not inspect properties they are buying or selling.</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+// ── INSPECTOR PROFILE PAGE ────────────────────────────────────
+function InspectorProfile({ inspector, onBack }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch("/api/inspector", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"profile", licenseNo: inspector.license_no }),
+        });
+        const d = await res.json();
+        setData(d);
+      } catch { setData(null); }
+      finally { setLoading(false); }
+    };
+    load();
+  }, [inspector.license_no]);
+
+  const gradeColor = g => g==="A"?"#2ecc71":g==="B"?"#C8A84B":g==="C"?"#e67e22":"#e74c3c";
+
+  return (
+    <main style={styles.main}>
+      <button onClick={onBack} style={{ background:"none", border:"none", color:"#666", cursor:"pointer", fontSize:14, fontFamily:"inherit", marginBottom:32, padding:0 }}>← Back to Directory</button>
+
+      {/* Hero */}
+      <div style={{ ...styles.reportHero, marginBottom:20 }}>
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:4 }}>
+            <div style={{ fontSize:26, fontWeight:800, color:"#f0f0f0" }}>{inspector.name}</div>
+            <span style={{ fontSize:11, color:"#2ecc71", fontFamily:"'DM Mono',monospace", background:"rgba(46,204,113,0.1)", border:"1px solid rgba(46,204,113,0.2)", padding:"3px 10px", borderRadius:4 }}>✓ VERIFIED</span>
+          </div>
+          <div style={{ color:"#C8A84B", fontSize:14 }}>{inspector.company_name || "Independent Inspector"}</div>
+          <div style={{ color:"#666", fontSize:13, marginTop:4 }}>
+            📍 {[inspector.city, inspector.state].filter(Boolean).join(", ")} · License: {inspector.license_no}
+          </div>
+          {inspector.phone && <div style={{ color:"#555", fontSize:13, marginTop:4 }}>📞 {inspector.phone}</div>}
+          {inspector.email && <div style={{ color:"#555", fontSize:13 }}>✉ {inspector.email}</div>}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:10 }}>
+          {inspector.avg_grade && (
+            <div style={{ width:60, height:60, borderRadius:10, background:`${gradeColor(inspector.avg_grade)}15`, border:`2px solid ${gradeColor(inspector.avg_grade)}`, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Mono',monospace", fontWeight:800, fontSize:28, color:gradeColor(inspector.avg_grade) }}>
+              {inspector.avg_grade}
+            </div>
+          )}
+          <div style={{ color:"#555", fontSize:12, textAlign:"right" }}>{inspector.report_count || 0} reports analyzed</div>
+        </div>
+      </div>
+
+      {/* Conflict warning */}
+      {(data?.conflictOfInterest || inspector.conflict_flag) && (
+        <div style={{ padding:"16px 20px", background:"rgba(231,76,60,0.08)", border:"1px solid rgba(231,76,60,0.3)", borderRadius:10, marginBottom:20 }}>
+          <div style={{ color:"#e74c3c", fontWeight:700, fontSize:14, marginBottom:6 }}>⚠ Conflict of Interest Flag</div>
+          <p style={{ color:"#c0392b", fontSize:13, lineHeight:1.65 }}>{data?.conflictDetails || "This inspector's license number is also associated with a buyer or seller account on InspectorTrust. They cannot legally inspect properties in which they have a financial interest."}</p>
+        </div>
+      )}
+
+      {/* Bio */}
+      {inspector.bio && (
+        <div style={{ ...styles.summaryBlock, marginBottom:20 }}>
+          <h3 style={styles.blockTitle}>About</h3>
+          <p style={{ color:"#aaa", fontSize:14, lineHeight:1.75 }}>{inspector.bio}</p>
+        </div>
+      )}
+
+      {/* Aggregate scores */}
+      {inspector.avg_trust_score && (
+        <div style={{ ...styles.formCard, marginBottom:20 }}>
+          <div style={styles.formCardTitle}>Aggregate Performance Scores</div>
+          <div style={{ marginBottom:20 }}><BalanceBar score={inspector.avg_balance_score || 50} /></div>
+          {[
+            { label:"Average Trust Score", val:inspector.avg_trust_score, color:"#C8A84B" },
+            { label:"Average Completeness", val:inspector.avg_completeness_score, color:"#3498db" },
+            { label:"Average Objectivity", val:inspector.avg_objectivity_score, color:"#2ecc71" },
+          ].map(s => (
+            <div key={s.label} style={{ marginBottom:18 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <span style={{ color:"#ccc", fontSize:13 }}>{s.label}</span>
+                <span style={{ color:s.color, fontFamily:"'DM Mono',monospace", fontWeight:700 }}>{s.val}/100</span>
+              </div>
+              <div style={{ height:6, background:"#1e1e1e", borderRadius:99, overflow:"hidden" }}>
+                <div style={{ height:"100%", width:`${s.val}%`, background:s.color, borderRadius:99 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Report history */}
+      {loading ? (
+        <div style={{ textAlign:"center", padding:"32px" }}><span style={{ ...styles.spinner, display:"inline-block" }} /></div>
+      ) : data?.reports?.length > 0 ? (
+        <div style={styles.formCard}>
+          <div style={styles.formCardTitle}>Report History ({data.reports.length})</div>
+          {data.reports.map((r, i) => (
+            <div key={i} style={{ padding:"14px 0", borderBottom: i < data.reports.length-1 ? "1px solid #1a1a1a" : "none" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ color:"#e8e8e8", fontSize:14, fontWeight:600 }}>{r.property_address || "Property address not listed"}</div>
+                  <div style={{ color:"#555", fontSize:12, marginTop:2 }}>{r.created_at ? new Date(r.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) : ""}</div>
+                </div>
+                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  {r.analysis_data?.trustScore && <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:"#C8A84B" }}>Trust {r.analysis_data.trustScore}</span>}
+                  {r.analysis_data?.inspectorGrade && <span style={{ fontSize:13, fontWeight:700, color:gradeColor(r.analysis_data.inspectorGrade) }}>{r.analysis_data.inspectorGrade}</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ ...styles.summaryBlock, textAlign:"center" }}>
+          <p style={{ color:"#555" }}>No analyzed reports found for this inspector yet.</p>
+        </div>
+      )}
+    </main>
+  );
+}
+
+// ── INSPECTOR REGISTRATION FORM ───────────────────────────────
+function InspectorRegister({ onBack, showToast }) {
+  const [form, setForm] = useState({ name:"", companyName:"", licenseNo:"", city:"", state:"", phone:"", email:"", bio:"" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const sf = k => v => setForm(f=>({...f,[k]:v}));
+
+  const submit = async () => {
+    if (!form.name || !form.licenseNo || !form.email) { setError("Name, license number, and email are required."); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/inspector", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"register_checkout", ...form }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else setError(data.error || "Could not start checkout.");
+    } catch { setError("Network error. Please try again."); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <main style={styles.main}>
+      <button onClick={onBack} style={{ background:"none", border:"none", color:"#666", cursor:"pointer", fontSize:14, fontFamily:"inherit", marginBottom:32, padding:0 }}>← Back to Directory</button>
+      <h2 style={styles.pageTitle}>Register as a Verified Inspector</h2>
+      <p style={{ color:"#666", fontSize:14, marginBottom:36, maxWidth:600 }}>Join the InspectorTrust verified directory. Realtors and homeowners search our directory to find trustworthy, rated inspectors. Your profile shows aggregate scores from all your analyzed reports.</p>
+
+      {/* Benefits */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16, marginBottom:36 }}>
+        {[
+          { icon:"🔍", title:"Be Found", desc:"Appear in searches by realtors and buyers looking for inspectors in your area." },
+          { icon:"⭐", title:"Build Credibility", desc:"Your AI-analyzed report scores aggregate into a public performance profile." },
+          { icon:"🛡️", title:"Verified Badge", desc:"Display a verified inspector badge showing you meet InspectorTrust standards." },
+        ].map(b => (
+          <div key={b.title} style={{ background:"#111", border:"1px solid #1e1e1e", borderRadius:12, padding:"20px" }}>
+            <div style={{ fontSize:28, marginBottom:10 }}>{b.icon}</div>
+            <div style={{ color:"#f0f0f0", fontWeight:700, fontSize:15, marginBottom:6 }}>{b.title}</div>
+            <div style={{ color:"#666", fontSize:13, lineHeight:1.65 }}>{b.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      {error && <div style={{ padding:"10px 14px", borderRadius:6, background:"rgba(231,76,60,0.1)", border:"1px solid #e74c3c", color:"#e74c3c", fontSize:13, marginBottom:16 }}>{error}</div>}
+
+      <div style={styles.formCard}>
+        <div style={styles.formCardTitle}>Inspector Information</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+          <div><label style={styles.label}>Full Name *</label><input style={styles.input} placeholder="John Smith" value={form.name} onChange={e=>sf("name")(e.target.value)} /></div>
+          <div><label style={styles.label}>Company / Firm</label><input style={styles.input} placeholder="Smith Home Inspections LLC" value={form.companyName} onChange={e=>sf("companyName")(e.target.value)} /></div>
+          <div><label style={styles.label}>License Number *</label><input style={styles.input} placeholder="TREC #12345 or HI-20984" value={form.licenseNo} onChange={e=>sf("licenseNo")(e.target.value)} /></div>
+          <div><label style={styles.label}>Email Address *</label><input style={styles.input} type="email" placeholder="inspector@email.com" value={form.email} onChange={e=>sf("email")(e.target.value)} /></div>
+          <div><label style={styles.label}>City</label><input style={styles.input} placeholder="Austin" value={form.city} onChange={e=>sf("city")(e.target.value)} /></div>
+          <div><label style={styles.label}>State</label><input style={styles.input} placeholder="TX" maxLength={2} value={form.state} onChange={e=>sf("state")(e.target.value.toUpperCase())} /></div>
+          <div style={{ gridColumn:"1/-1" }}><label style={styles.label}>Phone Number</label><input style={styles.input} placeholder="(512) 555-0100" value={form.phone} onChange={e=>sf("phone")(e.target.value)} /></div>
+        </div>
+        <div style={{ marginTop:16 }}>
+          <label style={styles.label}>Professional Bio (optional)</label>
+          <textarea style={{ ...styles.textarea, minHeight:100 }} placeholder="Brief description of your experience, certifications, and specialties..." value={form.bio} onChange={e=>sf("bio")(e.target.value)} rows={4} />
+        </div>
+      </div>
+
+      <div style={{ ...styles.summaryBlock, marginTop:20, border:"1px solid rgba(200,168,75,0.2)", background:"rgba(200,168,75,0.03)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <div style={{ color:"#f0f0f0", fontWeight:700, fontSize:16 }}>Annual Directory Listing</div>
+            <div style={{ color:"#666", fontSize:13, marginTop:4 }}>Appears in InspectorTrust verified inspector search · Aggregate score profile · Verified badge · Renews annually</div>
+          </div>
+          <div style={{ fontFamily:"'DM Mono',monospace", fontWeight:800, fontSize:28, color:"#C8A84B" }}>$50<span style={{ fontSize:14, fontWeight:400, color:"#555" }}>/yr</span></div>
+        </div>
+      </div>
+
+      <button onClick={submit} disabled={loading} style={{ ...styles.ctaPrimary, marginTop:20, opacity:loading?0.7:1 }}>
+        {loading ? "Processing..." : "Pay $50 & Get Listed →"}
+      </button>
+      <p style={{ color:"#333", fontSize:11, marginTop:12, lineHeight:1.7 }}>By registering, you confirm that your license information is accurate. InspectorTrust reserves the right to remove listings that violate our terms of service. Note: A conflict of interest flag will be automatically applied if your license number is associated with any buyer or seller account on our platform.</p>
+    </main>
   );
 }
 
