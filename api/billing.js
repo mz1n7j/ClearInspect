@@ -1,12 +1,3 @@
-const Stripe = require("stripe");
-const { createClient } = require("@supabase/supabase-js");
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -14,45 +5,50 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError) return res.status(401).json({ error: "Unauthorized" });
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+  const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
 
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
   const { action } = req.body;
 
   try {
-    if (action === "checkout") {
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        payment_method_types: ["card"],
-        customer_email: user.email,
-        line_items: [{
-          price_data: {
-            currency: "usd",
-            product_data: { name: "InspectorTrust Realtor — Annual Plan" },
-            unit_amount: 2000,
-            recurring: { interval: "year" },
-          },
-          quantity: 1,
-        }],
-        metadata: { userId: user.id },
-        success_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com"}?payment=success`,
-        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com"}?payment=cancelled`,
-      });
-      return res.status(200).json({ url: session.url });
-    }
+    // Verify user
+    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+    });
+    const userData = await userRes.json();
+    if (!userRes.ok) return res.status(401).json({ error: "Unauthorized" });
 
-    if (action === "portal") {
-      const { data: profile } = await supabase
-        .from("profiles").select("stripe_customer_id").eq("id", user.id).single();
-      if (!profile?.stripe_customer_id) {
-        return res.status(400).json({ error: "No billing account found." });
-      }
-      const portalSession = await stripe.billingPortal.sessions.create({
-        customer: profile.stripe_customer_id,
-        return_url: `${process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com"}`,
+    if (action === "checkout") {
+      // Create Stripe checkout session via REST API
+      const params = new URLSearchParams({
+        mode: "subscription",
+        "payment_method_types[0]": "card",
+        customer_email: userData.email,
+        "line_items[0][price_data][currency]": "usd",
+        "line_items[0][price_data][product_data][name]": "InspectorTrust Realtor Annual Plan",
+        "line_items[0][price_data][unit_amount]": "2000",
+        "line_items[0][price_data][recurring][interval]": "year",
+        "line_items[0][quantity]": "1",
+        "metadata[userId]": userData.id,
+        success_url: `${SITE_URL}?payment=success`,
+        cancel_url: `${SITE_URL}?payment=cancelled`,
       });
-      return res.status(200).json({ url: portalSession.url });
+
+      const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${STRIPE_KEY}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+
+      const stripeData = await stripeRes.json();
+      if (!stripeRes.ok) return res.status(400).json({ error: stripeData.error?.message });
+      return res.status(200).json({ url: stripeData.url });
     }
 
     return res.status(400).json({ error: "Unknown action" });
