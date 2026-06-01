@@ -408,14 +408,14 @@ export default function App() {
           </div>
 
           {/* BALANCE BAR HERO FEATURE */}
-          <div style={{...styles.formCard, marginBottom:48, border:"1px solid rgba(200,168,75,0.3)", background:"rgba(200,168,75,0.03)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+          <div style={{...styles.formCard, marginBottom:32, border:"1px solid rgba(200,168,75,0.3)", background:"rgba(200,168,75,0.03)", padding:"20px 24px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:6}}>
               <div style={styles.pill}>New Feature</div>
               <div style={styles.formCardTitle}>Inspector Balance Score</div>
             </div>
-            <h3 style={{color:"#f0f0f0",fontSize:20,fontWeight:700,marginBottom:12,letterSpacing:"-0.02em"}}>A Better Way to Evaluate Inspectors</h3>
-            <p style={{color:"#777",fontSize:14,lineHeight:1.75,marginBottom:28,maxWidth:700}}>
-              Not all inspection reports are created equal. Some inspectors flag every scuff mark alongside genuine structural concerns — making it impossible to know what actually matters. The Inspector Balance Score measures what the industry has ignored for years: whether an inspector consistently identifies <strong style={{color:"#C8A84B"}}>material, deal-relevant issues</strong> while filtering out excessive minor findings used as negotiation leverage.
+            <h3 style={{color:"#f0f0f0",fontSize:17,fontWeight:700,marginBottom:8,letterSpacing:"-0.02em"}}>A Better Way to Evaluate Inspectors</h3>
+            <p style={{color:"#777",fontSize:13,lineHeight:1.7,marginBottom:20,maxWidth:"100%"}}>
+              Not all inspection reports are created equal. Some inspectors flag every scuff mark alongside genuine structural concerns — making it impossible to know what actually matters. The Inspector Balance Score measures what the industry has ignored: whether an inspector consistently identifies <strong style={{color:"#C8A84B"}}>material, deal-relevant issues</strong> while filtering out excessive minor findings used as negotiation leverage.
             </p>
             <BalanceBar score={52} />
             <p style={{color:"#444",fontSize:11,marginTop:16,fontStyle:"italic"}}>Example shown above. Green means this inspector has a consistent track record of identifying what matters — and nothing more. Red means the report may not give you the full, balanced picture.</p>
@@ -430,19 +430,25 @@ export default function App() {
 
           {/* PRICING */}
           <div style={{marginBottom:64}}>
-            <h2 style={styles.sectionTitle}>Built for Realtors. Priced to Be a No-Brainer.</h2>
-            <p style={{color:"#666",fontSize:15,lineHeight:1.75,maxWidth:640,marginBottom:32}}>You close deals. We protect them. For just <strong style={{color:"#C8A84B"}}>$20 a year</strong>, you get full access to InspectorTrust — the only platform that scores inspectors on balance, completeness, and fraud risk before your clients rely on their report.</p>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:20}}>
+            <h2 style={styles.sectionTitle}>Simple, Transparent Pricing</h2>
+            <p style={{color:"#666",fontSize:14,lineHeight:1.7,marginBottom:28}}>Whether you're buying, selling, or closing deals — InspectorTrust has a plan for you.</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
               {[
-                {title:"Buyer / Seller",price:"Free",color:"#2ecc71",features:["Browse inspector registry","View public Balance Scores","See major issues summary","No account required to search"]},
-                {title:"Realtor — Trial",price:"14 Days Free",color:"#C8A84B",features:["Upload & analyze reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export"]},
-                {title:"Realtor — Annual",price:"$20 / year",color:"#3498db",features:["Everything in trial","Unlimited report uploads","Upload 50+ reports = free first year","Inspector fraud risk alerts","Priority support"]},
+                {title:"Buyer / Seller",price:"Free",color:"#2ecc71",btn:"green",features:["Browse inspector registry","View public Balance Scores","See major issues summary","No account required to search"]},
+                {title:"Realtor — Trial",price:"14 Days Free",color:"#C8A84B",btn:"gold",features:["Upload & analyze reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export"]},
+                {title:"Realtor — Annual",price:"$20 / year",color:"#3498db",btn:"blue",features:["Everything in trial","Unlimited report uploads","Upload 50+ reports = free first year","Inspector fraud risk alerts","Priority support"]},
               ].map(p=>(
-                <div key={p.title} style={{...styles.stepCard,border:`1px solid ${p.color}33`}}>
+                <div key={p.title} style={{...styles.stepCard,border:`1px solid ${p.color}33`,display:"flex",flexDirection:"column"}}>
                   <div style={{color:p.color,fontSize:11,letterSpacing:"0.14em",fontFamily:"'DM Mono',monospace",marginBottom:8}}>{p.title.toUpperCase()}</div>
-                  <div style={{fontSize:24,fontWeight:800,color:"#f0f0f0",marginBottom:16}}>{p.price}</div>
-                  {p.features.map(f=><div key={f} style={{color:"#777",fontSize:13,marginBottom:8,display:"flex",gap:8}}><span style={{color:p.color}}>✓</span>{f}</div>)}
-                  {p.title.includes("Trial") && <button style={{...styles.ctaPrimary,marginTop:16,fontSize:13,padding:"10px 20px"}} onClick={()=>setShowAuth(true)}>Start Free Trial →</button>}
+                  <div style={{fontSize:26,fontWeight:800,color:"#f0f0f0",marginBottom:14}}>{p.price}</div>
+                  <div style={{flex:1}}>
+                    {p.features.map(f=><div key={f} style={{color:"#777",fontSize:13,marginBottom:8,display:"flex",gap:8,alignItems:"flex-start"}}><span style={{color:p.color,flexShrink:0}}>✓</span>{f}</div>)}
+                  </div>
+                  <div style={{marginTop:20}}>
+                    {p.btn==="green" && <button style={{background:"#2ecc71",color:"#0e0e0e",border:"none",padding:"11px 20px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",width:"100%"}} onClick={()=>setShowAuth(true)}>Create Free Account →</button>}
+                    {p.btn==="gold" && <button style={{...styles.ctaPrimary,fontSize:13,padding:"11px 20px",width:"100%",justifyContent:"center"}} onClick={()=>setShowAuth(true)}>Start Free Trial →</button>}
+                    {p.btn==="blue" && <button style={{background:"#3498db",color:"#fff",border:"none",padding:"11px 20px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",width:"100%"}} onClick={()=>setShowAuth(true)}>Get Realtor Access →</button>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1174,10 +1180,10 @@ const styles = {
   navActive:{background:"none",border:"1px solid #C8A84B",color:"#C8A84B",padding:"7px 16px",borderRadius:6,cursor:"pointer",fontSize:13,fontFamily:"inherit"},
   main:{maxWidth:1100,margin:"0 auto",padding:"48px 24px 80px"},
   toast:{position:"fixed",top:72,right:24,zIndex:999,background:"#111",border:"1px solid",padding:"12px 20px",borderRadius:8,fontSize:13,fontFamily:"'DM Mono',monospace"},
-  heroSection:{textAlign:"center",padding:"60px 0 48px"},
+  heroSection:{textAlign:"center",padding:"32px 0 24px"},
   pill:{display:"inline-block",background:"rgba(200,168,75,0.1)",border:"1px solid rgba(200,168,75,0.3)",color:"#C8A84B",padding:"5px 16px",borderRadius:100,fontSize:12,letterSpacing:"0.12em",marginBottom:24,fontFamily:"'DM Mono',monospace"},
-  heroTitle:{fontSize:"clamp(40px,7vw,72px)",fontWeight:800,lineHeight:1.05,letterSpacing:"-0.03em",color:"#f0f0f0",marginBottom:24},
-  heroSub:{fontSize:16,color:"#777",maxWidth:580,margin:"0 auto 36px",lineHeight:1.7},
+  heroTitle:{fontSize:"clamp(28px,4.5vw,48px)",fontWeight:800,lineHeight:1.1,letterSpacing:"-0.03em",color:"#f0f0f0",marginBottom:16},
+  heroSub:{fontSize:14,color:"#777",maxWidth:540,margin:"0 auto 24px",lineHeight:1.65},
   ctaPrimary:{background:"#C8A84B",color:"#0e0e0e",border:"none",padding:"14px 30px",borderRadius:8,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:8},
   ctaSecondary:{background:"transparent",color:"#C8A84B",border:"1px solid #C8A84B",padding:"14px 30px",borderRadius:8,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"inherit"},
   btnDisabled:{background:"#2a2a2a",color:"#666",border:"none",padding:"14px 30px",borderRadius:8,fontSize:15,fontWeight:700,cursor:"not-allowed",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:8},
