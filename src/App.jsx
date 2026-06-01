@@ -349,6 +349,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) {
         if (data.code==="TRIAL_EXPIRED") { setView("account"); showToast(data.message,"error"); return; }
+        if (res.status===401) { clearSession(); setSession(null); setUploadStep(1); setShowAuth(true); showToast("Session expired — your report is still here, just sign in again.","error"); return; }
         throw new Error(data.error||"Analysis failed");
       }
       const newReport = { id:generateId(), ...form, propertyAddress:addr, analysis:data.analysis, date:new Date().toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) };
