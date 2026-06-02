@@ -29,25 +29,25 @@ module.exports = async function handler(req, res) {
   }
 
   function parseJSON(str) {
-    // Step 1: extract just the {...} block - works regardless of surrounding text
-    const extractObj = s => {
-      const start = s.indexOf("{");
-      const end = s.lastIndexOf("}");
-      if (start >= 0 && end > start) return s.slice(start, end + 1);
-      return null;
-    };
-
-    const tries = [
-      () => JSON.parse(str),
-      () => JSON.parse(extractObj(str)),
-      () => JSON.parse(str.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim()),
-      () => JSON.parse(extractObj(str.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim())),
-      () => JSON.parse(extractObj(str.replace(/,\s*([}\]])/g, "$1"))),
-    ];
-    for (const t of tries) {
-      try { const r = t(); if (r && typeof r === "object") return r; } catch {}
+    // Always extract the outermost { ... } block first — ignores ALL surrounding text
+    const start = str.indexOf("{");
+    const end = str.lastIndexOf("}");
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("No JSON object found in response");
     }
-    throw new Error("JSON parse failed. Raw: " + str.slice(0, 200));
+    const extracted = str.slice(start, end + 1);
+    try {
+      const result = JSON.parse(extracted);
+      if (result && typeof result === "object") return result;
+    } catch (e) {
+      // Try fixing trailing commas
+      try {
+        const fixed = extracted.replace(/,(\s*[}\]])/g, "$1");
+        const result = JSON.parse(fixed);
+        if (result && typeof result === "object") return result;
+      } catch {}
+    }
+    throw new Error("JSON parse failed. Extracted: " + extracted.slice(0, 200));
   }
 
   async function sbPost(path, body) {
