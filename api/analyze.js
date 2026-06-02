@@ -222,79 +222,11 @@ Return ONLY this JSON with all 10 fields, nothing else:
       const reportId = saved?.id || null;
 
       // ── BALANCED AI ANALYSIS ──────────────────────────────
-      const SYSTEM = `You are a neutral, experienced real estate inspection analyst with 20+ years of experience evaluating inspection reports professionally and fairly.
+      const SYSTEM = "You are a professional home inspection analyst. Analyze the report and return ONLY a JSON object starting with { and ending with }. No markdown, no backticks, no text before or after the JSON.";
 
-## CRITICAL SCORING PHILOSOPHY
+      const USER_PROMPT = "Inspector: " + (inspectorName||"Unknown") + "\nCompany: " + (companyName||"Unknown") + "\nLicense: " + (licenseNo||"N/A") + "\nProperty: " + (propertyAddress||"N/A") + "\n\nReport text:\n" + (reportText||"").slice(0,4000) + "\n\nReturn this JSON object:\n{\"trustScore\": 70,\"fraudRisk\": \"Low\",\"balanceScore\": 50,\"inspectorGrade\": \"B\",\"completenessScore\": 70,\"technicalScore\": 70,\"objectivityScore\": 70,\"summary\": \"summary here\",\"dealBreakers\": [],\"notableIssues\": [],\"minorObservations\": [],\"strengths\": [],\"concerns\": [],\"biasIndicators\": [],\"redFlags\": [],\"recommendation\": \"recommendation here\",\"emailBuyer\": \"buyer email here\",\"emailSeller\": \"seller email here\",\"emailRealtor\": \"realtor email here\"}";
 
-### MAJOR ITEMS — Low bias impact (inspectors SHOULD find these):
-Finding these items is EXPECTED and BALANCED behavior. Do NOT inflate the buyer-bias score for these:
-- Structural issues (foundation, framing, load-bearing elements)
-- Roof condition (leaks, missing shingles, deterioration, age)
-- Electrical (panel issues, wiring, code violations, GFCI)
-- Plumbing (leaks, supply/drain, water heater, pressure)
-- HVAC (age, condition, efficiency, needed repairs)
-- Water intrusion and moisture damage
-- Safety hazards (CO, smoke detectors, stair safety, etc.)
-→ An inspector flagging MANY of these = THOROUGH, not biased
-
-### COSMETIC/MINOR ITEMS — HIGH buyer-bias impact when over-reported:
-These significantly increase the buyer-bias score when an inspector over-reports them:
-- Small paint chips, touch-up needed, scuffs
-- Normal wear on flooring, carpet, countertops
-- Minor landscaping concerns
-- Aging/weathering that is cosmetic only
-- Light fixture aesthetics
-- Caulking at sinks/tubs (normal maintenance)
-- Screen tears, minor hardware issues
-→ Inspector padding report with 10+ cosmetic items = BUYER BIAS
-
-## BALANCE SCORE RULES:
-- 50 = perfectly balanced and professional
-- Under 35 = buyer-biased (too many cosmetic items flagged urgently, alarmist language, excessive minor issues relative to major ones)
-- Over 65 = seller-biased (misses obvious defects, vague throughout, underreports issues)
-- A report with 20 major findings is NOT biased — it is thorough
-- A report with 3 major findings and 25 cosmetic items IS buyer-biased
-
-## OUTPUT STRUCTURE:
-Organize ALL findings into exactly three tiers:
-1. dealBreakers: Structural, safety, major system failures — things that affect deal negotiation significantly
-2. notableIssues: Real repairs needed but not urgent, items nearing end of life, deferred maintenance with cost impact
-3. minorObservations: Cosmetic, normal wear, monitor-only items. Flag isCosmeticOverreach=true if an inspector treats cosmetic items as major concerns.
-
-CRITICAL: Return ONLY the raw JSON object. Your response must start with { and end with }. NO backticks, NO ```json, NO markdown, NO explanation before or after:
-{
-  "trustScore": <0-100>,
-  "fraudRisk": "<Low|Moderate|High>",
-  "balanceScore": <0-100>,
-  "inspectorGrade": "<A|B|C|D|F>",
-  "completenessScore": <0-100>,
-  "technicalScore": <0-100>,
-  "objectivityScore": <0-100>,
-  "summary": "<2-3 professional sentences distinguishing major vs minor findings, not alarmist>",
-  "dealBreakers": [{"item":"<finding>","severity":"<critical|major>","recommendation":"<action>"}],
-  "notableIssues": [{"item":"<finding>","severity":"moderate","recommendation":"<action>"}],
-  "minorObservations": [{"item":"<finding>","severity":"minor","isCosmeticOverreach":<true|false>}],
-  "strengths": ["<specific strength>"],
-  "concerns": ["<specific concern about report quality>"],
-  "biasIndicators": ["<specific pattern indicating buyer bias, if any>"],
-  "redFlags": ["<fraud indicator if any>"],
-  "recommendation": "<one professional actionable sentence>",
-  "emailBuyer": "<4-sentence professional email that clearly separates major findings from cosmetic ones>",
-  "emailSeller": "<4-sentence professional email helping seller understand what genuinely needs addressing>",
-  "emailRealtor": "<4-sentence professional email with deal-relevant summary and recommended next steps>"
-}`;
-
-      const raw = await claude(
-        SYSTEM,
-        `Inspector: ${inspectorName||"Unknown"}
-Company: ${companyName||"Unknown"}
-License: ${licenseNo||"Not provided"}
-Property: ${propertyAddress||"Not provided"}
-
-INSPECTION REPORT (${(reportText||"").length} characters):
-${(reportText||"").slice(0,5000)}`,
-        2000, true
-      );
+      const raw = await claude(SYSTEM, USER_PROMPT, 2000, true);
 
       let analysis;
       try { analysis = parseJSON(raw); }
