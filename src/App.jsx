@@ -931,7 +931,12 @@ export default function App() {
                 <p style={{color:"#777",fontSize:12,lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{r.analysis.summary?.slice(0,100)}…</p>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={tag(r.analysis.fraudRisk==="High"?C.red:r.analysis.fraudRisk==="Moderate"?C.gold:C.green)}>{r.analysis.fraudRisk} Risk</span>
-                  <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    {session?.profile?.role==="admin"&&(
+                      <button onClick={e=>{e.stopPropagation();deleteReport(r.id);}} style={{background:"none",border:`1px solid ${C.red}`,color:C.red,fontSize:11,cursor:"pointer",padding:"3px 10px",borderRadius:4,fontFamily:"inherit",fontWeight:600}}>Delete</button>
+                    )}
+                    <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
+                  </div>
                 </div>
                 {r.savedToDb&&<div style={{color:C.green,fontSize:10,fontFamily:"monospace",marginTop:6}}>✓ Saved · 10yr retention</div>}
               </div>
