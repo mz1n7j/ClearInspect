@@ -29,31 +29,32 @@ export default async function handler(req, res) {
   }
 
   function parseJSON(str) {
-    // Aggressively clean the string first
-    const clean = str
-      .replace(/^```json\s*/i, "")   // leading ```json
-      .replace(/^```\s*/i, "")        // leading ```
-      .replace(/```\s*$/i, "")        // trailing ```
-      .replace(/^[^{]*/s, s => {       // strip anything before first {
-        const idx = s.indexOf("{");
-        return idx >= 0 ? s.slice(idx) : s;
-      })
+    // Strip common markdown wrappers
+    const strip = s => s
+      .replace(/^```json/i, "")
+      .replace(/^```/i, "")
+      .replace(/```$/i, "")
       .trim();
+
+    // Extract the first complete {...} block
+    const extract = s => {
+      const start = s.indexOf("{");
+      const end = s.lastIndexOf("}");
+      if (start >= 0 && end > start) return s.slice(start, end + 1);
+      return s;
+    };
+
+    const clean = strip(str);
+    const extracted = extract(str);
+    const cleanExtracted = extract(clean);
 
     const tries = [
       () => JSON.parse(str),
       () => JSON.parse(clean),
-      () => JSON.parse(str.match(/\{[\s\S]*\}/)?.[0]),
-      () => JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0]),
+      () => JSON.parse(extracted),
+      () => JSON.parse(cleanExtracted),
       () => JSON.parse(str.replace(/```json|```/g, "").replace(/,\s*([}\]])/g, "$1").trim()),
       () => JSON.parse(clean.replace(/,\s*([}\]])/g, "$1")),
-      // Last resort: extract just the outer object
-      () => {
-        const start = str.indexOf("{");
-        const end = str.lastIndexOf("}");
-        if (start >= 0 && end > start) return JSON.parse(str.slice(start, end + 1));
-        throw new Error("No JSON object found");
-      },
     ];
     for (const t of tries) {
       try { const r = t(); if (r && typeof r === "object") return r; } catch {}
