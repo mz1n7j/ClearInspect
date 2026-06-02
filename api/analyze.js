@@ -101,30 +101,72 @@ export default async function handler(req, res) {
       if (!reportText || reportText.trim().length < 10) {
         return res.status(400).json({ error: "Report text too short." });
       }
-      const raw = await claude(
-        `You extract structured data from home inspection reports.
-Return ONLY a raw JSON object. Absolutely NO markdown. NO backticks. NO code fences. NO explanation. Start your response with { and end with }.
-Use empty string "" for missing fields. Never use "Unknown", "N/A", or null.
 
-FIELD RULES:
-- inspectorName: The LICENSED HOME INSPECTOR who performed the inspection. Look for "Inspector:", "Inspected by:", "Performed by:", "Certified by:". NOT the client, buyer, seller, or repair person.
-- companyName: The HOME INSPECTION COMPANY only. NOT repair companies, NOT real estate agencies.
-- licenseNo: Look for "License #", "TREC #", "HI-", "Lic.", "Cert. #", "CPI#"
-- street/city/state/zip: INSPECTED PROPERTY address only. state = 2-letter abbreviation.
-- buyerEmail/sellerEmail/realtorEmail: Only if explicitly labeled.
+      // Search multiple sections: cover page (top), middle, and end
+      const fullLen = reportText.length;
+      const top = reportText.slice(0, 3000);
+      const mid = fullLen > 8000 ? reportText.slice(Math.floor(fullLen / 2) - 1000, Math.floor(fullLen / 2) + 1000) : "";
+      const bottom = fullLen > 4000 ? reportText.slice(-1500) : "";
+      const combined = [top, mid, bottom].filter(Boolean).join("\n\n[...]\n\n").slice(0, 6000);
 
-Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":""}`,
-        `Extract from this inspection report:\n\n${reportText.slice(0, 5000)}`
-      );
+      const PARSE_PROMPT = `You are a data extraction expert for home inspection reports.
+
+YOUR RESPONSE MUST START WITH { AND END WITH }. Nothing before or after. No backticks. No markdown.
+
+Search the ENTIRE text carefully. The property address may appear anywhere — not just the top.
+
+FIELD DEFINITIONS:
+- inspectorName: The licensed inspector who performed this inspection. Look for "Inspector:", "Inspected By:", "Performed By:", "Inspector Name:", "Report Prepared By:", "Certified By:". NOT the client, buyer, or seller.
+- companyName: The home inspection company. Look in the header, footer, near inspector name, or after "Company:". NOT a repair company or real estate firm.
+- licenseNo: Inspector license number. Look for "License #", "License No", "TREC #", "Lic #", "Cert #", "CPI #", "HI-".
+- street: Street number and name of the INSPECTED PROPERTY. Look for "Property Address:", "Subject Property:", "Inspection Address:", "Property Location:", "Address:", or a standalone address near the top. Examples: "123 Main St" or "2309 Lyla Ln".
+- city: City of the inspected property.
+- state: 2-letter abbreviation of the state (TX, CA, FL, NY, etc).
+- zip: 5-digit ZIP code of the inspected property.
+- buyerEmail: Email labeled as buyer or client. Empty string if not found.
+- sellerEmail: Email labeled as seller or owner. Empty string if not found.
+- realtorEmail: Email labeled as agent or realtor. Empty string if not found.
+
+Return this exact JSON object with all 10 fields:
+{"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":""}`;
+
+      const raw = await claude(PARSE_PROMPT, `Extract all fields from this report:\n\n${combined}`, 500, false);
+
       let parsed;
       try { parsed = parseJSON(raw); }
-      catch { parsed = { inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"" }; }
-      const cleaned = Object.fromEntries(
-        Object.entries(parsed).map(([k,v]) => {
-          const s = String(v||"").trim();
-          return [k, ["Unknown","N/A","n/a","null","none"].includes(s) ? "" : s];
-        })
-      );
+      catch {
+        console.error("Parse failed, raw:", raw.slice(0, 200));
+        parsed = {};
+      }
+
+      // Clean and normalize
+      const empty = { inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"" };
+      const cleaned = { ...empty };
+      const junk = new Set(["unknown","n/a","na","null","none","not found","not listed","not provided","not available","-","—"]);
+      for (const k of Object.keys(empty)) {
+        const v = String(parsed[k] || "").trim();
+        cleaned[k] = junk.has(v.toLowerCase()) ? "" : v;
+      }
+
+      // Regex fallbacks if AI missed the address
+      if (!cleaned.street) {
+        const m = reportText.match(/(\d{2,5})\s+([A-Za-z0-9][A-Za-z0-9\s\.]{2,30}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Drive|Dr|Lane|Ln|Road|Rd|Way|Court|Ct|Place|Pl|Loop|Trail|Parkway|Pkwy|Highway|Hwy|Circle|Cir|Terrace|Terr|Pass|Run|Cove|Cv)\.?)/i);
+        if (m) cleaned.street = m[0].trim();
+      }
+      if (!cleaned.city || !cleaned.state || !cleaned.zip) {
+        const m = reportText.match(/([A-Z][a-zA-Z\s]{2,20}),\s*([A-Z]{2})\s+(\d{5})/);
+        if (m) {
+          if (!cleaned.city) cleaned.city = m[1].trim();
+          if (!cleaned.state) cleaned.state = m[2].trim();
+          if (!cleaned.zip) cleaned.zip = m[3].trim();
+        }
+      }
+      // Try to extract state from 2-letter state code near zip
+      if (!cleaned.state) {
+        const m = reportText.match(/\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\s+\d{5}/);
+        if (m) cleaned.state = m[1];
+      }
+
       return res.status(200).json({ parsed: cleaned });
     }
 
