@@ -951,6 +951,10 @@ function ReportView({report,onSendEmails,emailSending,emailSent,onBack}) {
   const exportPDF=async()=>{
     setPdfExp(true);
     try{
+      // Validate data before attempting PDF
+      if(!a || typeof a !== "object") throw new Error("No analysis data available for PDF export.");
+      if(!a.summary && !a.trustScore) throw new Error("Analysis incomplete — please re-analyze the report first.");
+
       await new Promise((res,rej)=>{if(window.jspdf){res();return;}const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
       const{jsPDF}=window.jspdf;
       const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"letter"});
