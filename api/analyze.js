@@ -29,14 +29,36 @@ export default async function handler(req, res) {
   }
 
   function parseJSON(str) {
+    // Aggressively clean the string first
+    const clean = str
+      .replace(/^```json\s*/i, "")   // leading ```json
+      .replace(/^```\s*/i, "")        // leading ```
+      .replace(/```\s*$/i, "")        // trailing ```
+      .replace(/^[^{]*/s, s => {       // strip anything before first {
+        const idx = s.indexOf("{");
+        return idx >= 0 ? s.slice(idx) : s;
+      })
+      .trim();
+
     const tries = [
       () => JSON.parse(str),
+      () => JSON.parse(clean),
       () => JSON.parse(str.match(/\{[\s\S]*\}/)?.[0]),
-      () => JSON.parse(str.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim()),
+      () => JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0]),
       () => JSON.parse(str.replace(/```json|```/g, "").replace(/,\s*([}\]])/g, "$1").trim()),
+      () => JSON.parse(clean.replace(/,\s*([}\]])/g, "$1")),
+      // Last resort: extract just the outer object
+      () => {
+        const start = str.indexOf("{");
+        const end = str.lastIndexOf("}");
+        if (start >= 0 && end > start) return JSON.parse(str.slice(start, end + 1));
+        throw new Error("No JSON object found");
+      },
     ];
-    for (const t of tries) { try { const r = t(); if (r) return r; } catch {} }
-    throw new Error("JSON parse failed");
+    for (const t of tries) {
+      try { const r = t(); if (r && typeof r === "object") return r; } catch {}
+    }
+    throw new Error("JSON parse failed. Raw: " + str.slice(0, 150));
   }
 
   async function sbPost(path, body) {
@@ -81,7 +103,7 @@ export default async function handler(req, res) {
       }
       const raw = await claude(
         `You extract structured data from home inspection reports.
-Return ONLY a raw JSON object. No markdown, no backticks, no explanation.
+Return ONLY a raw JSON object. Absolutely NO markdown. NO backticks. NO code fences. NO explanation. Start your response with { and end with }.
 Use empty string "" for missing fields. Never use "Unknown", "N/A", or null.
 
 FIELD RULES:
@@ -190,7 +212,7 @@ Organize ALL findings into exactly three tiers:
 2. notableIssues: Real repairs needed but not urgent, items nearing end of life, deferred maintenance with cost impact
 3. minorObservations: Cosmetic, normal wear, monitor-only items. Flag isCosmeticOverreach=true if an inspector treats cosmetic items as major concerns.
 
-Return ONLY this JSON object — no markdown, no backticks, no explanation:
+CRITICAL: Return ONLY the raw JSON object. Your response must start with { and end with }. NO backticks, NO ```json, NO markdown, NO explanation before or after:
 {
   "trustScore": <0-100>,
   "fraudRisk": "<Low|Moderate|High>",
