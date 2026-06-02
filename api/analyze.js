@@ -239,14 +239,36 @@ CRITICAL: String values must NOT contain line breaks. Write emails as single par
         `Inspector: ${inspectorName||"Unknown"} | Company: ${companyName||"Unknown"} | License: ${licenseNo||"N/A"} | Property: ${propertyAddress||"N/A"}
 
 REPORT: ${reportClean}`,
-        2000, true
+        3000, true
       );
 
       let analysis;
       try { analysis = parseJSON(raw); }
       catch (e) {
         console.error("Analysis parse failed:", e.message, raw.slice(0,200));
-        return res.status(500).json({ error: "AI response could not be parsed. Please try again." });
+        // Try to extract partial data from truncated JSON
+        const partial = {};
+        const patterns = [
+          [/\"trustScore\"\s*:\s*(\d+)/, "trustScore", Number],
+          [/\"fraudRisk\"\s*:\s*\"([^"]+)\"/, "fraudRisk", String],
+          [/\"balanceScore\"\s*:\s*(\d+)/, "balanceScore", Number],
+          [/\"inspectorGrade\"\s*:\s*\"([^"]+)\"/, "inspectorGrade", String],
+          [/\"completenessScore\"\s*:\s*(\d+)/, "completenessScore", Number],
+          [/\"technicalScore\"\s*:\s*(\d+)/, "technicalScore", Number],
+          [/\"objectivityScore\"\s*:\s*(\d+)/, "objectivityScore", Number],
+          [/\"summary\"\s*:\s*\"([^"]{10,})\"/, "summary", String],
+          [/\"recommendation\"\s*:\s*\"([^"]{10,})\"/, "recommendation", String],
+        ];
+        for (const [rx, key, cast] of patterns) {
+          const m = raw.match(rx);
+          if (m) partial[key] = cast(m[1]);
+        }
+        if (partial.trustScore) {
+          console.log("Recovered partial analysis:", Object.keys(partial).join(","));
+          analysis = partial;
+        } else {
+          return res.status(500).json({ error: "AI response could not be parsed. Please try again." });
+        }
       }
 
       const defaults = {
