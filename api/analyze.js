@@ -5,255 +5,361 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+  const SB = process.env.SUPABASE_URL;
+  const SK = process.env.SUPABASE_SERVICE_KEY;
+  const AK = process.env.ANTHROPIC_API_KEY;
 
-  if (!ANTHROPIC_KEY) return res.status(500).json({ error: "Anthropic API key not configured." });
+  if (!AK) return res.status(500).json({ error: "Anthropic API key not configured." });
 
   const { mode, reportText, inspectorName, companyName, licenseNo, propertyAddress } = req.body;
 
-  async function callClaude(system, userMsg, maxTokens) {
+  async function claude(system, user, tokens, sonnet) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: { "Content-Type": "application/json", "x-api-key": AK, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: maxTokens || 1000,
-        system,
-        messages: [{ role: "user", content: userMsg }],
+        model: sonnet ? "claude-sonnet-4-5" : "claude-haiku-4-5",
+        max_tokens: tokens || 1000,
+        system, messages: [{ role: "user", content: user }],
       }),
     });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error?.message || `Anthropic error: ${JSON.stringify(data)}`);
-    return data.content?.find(b => b.type === "text")?.text || "{}";
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error?.message || JSON.stringify(d));
+    return d.content?.find(b => b.type === "text")?.text || "{}";
   }
 
-  function safeParseJSON(str) {
-    try { return JSON.parse(str); } catch {}
-    const m1 = str.match(/\{[\s\S]*\}/);
-    if (m1) { try { return JSON.parse(m1[0]); } catch {} }
-    const stripped = str.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    try { return JSON.parse(stripped); } catch {}
-    const m2 = stripped.match(/\{[\s\S]*\}/);
-    if (m2) { try { return JSON.parse(m2[0]); } catch {} }
+  function parseJSON(str) {
+    const tries = [
+      () => JSON.parse(str),
+      () => JSON.parse(str.match(/\{[\s\S]*\}/)?.[0]),
+      () => JSON.parse(str.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim()),
+      () => JSON.parse(str.replace(/```json|```/g, "").replace(/,\s*([}\]])/g, "$1").trim()),
+    ];
+    for (const t of tries) { try { const r = t(); if (r) return r; } catch {} }
+    throw new Error("JSON parse failed");
+  }
+
+  async function sbPost(path, body) {
+    if (!SB || !SK) return null;
     try {
-      const fixed = str.replace(/```json|```/g, "").replace(/,\s*([}\]])/g, "$1").trim();
-      return JSON.parse(fixed);
+      const r = await fetch(`${SB}/rest/v1/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=representation" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      return Array.isArray(d) ? d[0] : d;
+    } catch { return null; }
+  }
+
+  async function sbPatch(path, body) {
+    if (!SB || !SK) return;
+    try {
+      await fetch(`${SB}/rest/v1/${path}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "apikey": SK, "Authorization": `Bearer ${SK}` },
+        body: JSON.stringify(body),
+      });
     } catch {}
-    throw new Error("All JSON parse strategies failed. Raw: " + str.slice(0, 300));
+  }
+
+  async function sbGet(path) {
+    if (!SB || !SK) return [];
+    try {
+      const r = await fetch(`${SB}/rest/v1/${path}`, {
+        headers: { "apikey": SK, "Authorization": `Bearer ${SK}` },
+      });
+      return await r.json();
+    } catch { return []; }
   }
 
   try {
-    // ── MODE: PARSE ──────────────────────────────────────────────
+    // ── PARSE MODE ────────────────────────────────────────────
     if (mode === "parse") {
       if (!reportText || reportText.trim().length < 10) {
-        return res.status(400).json({ error: "Report text is empty or too short." });
+        return res.status(400).json({ error: "Report text too short." });
       }
+      const raw = await claude(
+        `You extract structured data from home inspection reports.
+Return ONLY a raw JSON object. No markdown, no backticks, no explanation.
+Use empty string "" for missing fields. Never use "Unknown", "N/A", or null.
 
-      // Send first 5000 chars for better coverage
-      const truncated = reportText.slice(0, 5000);
+FIELD RULES:
+- inspectorName: The LICENSED HOME INSPECTOR who performed the inspection. Look for "Inspector:", "Inspected by:", "Performed by:", "Certified by:". NOT the client, buyer, seller, or repair person.
+- companyName: The HOME INSPECTION COMPANY only. NOT repair companies, NOT real estate agencies.
+- licenseNo: Look for "License #", "TREC #", "HI-", "Lic.", "Cert. #", "CPI#"
+- street/city/state/zip: INSPECTED PROPERTY address only. state = 2-letter abbreviation.
+- buyerEmail/sellerEmail/realtorEmail: Only if explicitly labeled.
 
-      const raw = await callClaude(
-        `You are an expert at reading home inspection reports and extracting structured data.
-
-TASK: Extract specific fields from the inspection report text below.
-
-CRITICAL RULES:
-1. Return ONLY a valid JSON object — no explanation, no markdown, no backticks, nothing else.
-2. Use empty string "" for any field you cannot confidently find.
-3. DO NOT guess or make up values.
-
-FIELD DEFINITIONS — read carefully:
-- inspectorName: The LICENSED HOME INSPECTOR who conducted the inspection. Look for "Inspector:", "Inspected By:", "Inspector Name:", "Certified by:", "Performed by:". This is NOT the client, buyer, seller, or repair company.
-- companyName: The HOME INSPECTION COMPANY that employs the inspector. Look for "Company:", "Inspection Company:", "Firm:", company name near the top of the report header, or the company logo text. NOT a repair company, NOT a real estate company.
-- licenseNo: The inspector's license number. Look for "License #", "License No.", "Lic.", "Cert. #", "Inspector ID:", state license patterns like "TREC #", "HI-", "CPI".
-- street: Street number and name of the INSPECTED PROPERTY (not the inspector's office address).
-- city: City of the inspected property.
-- state: 2-letter state abbreviation of the inspected property (TX, CA, FL, etc.).
-- zip: 5-digit ZIP code of the inspected property.
-- buyerEmail: Email address labeled as buyer, client, or purchaser. Empty string if not found.
-- sellerEmail: Email address labeled as seller or owner. Empty string if not found.
-- realtorEmail: Email address labeled as agent, realtor, or broker. Empty string if not found.
-
-Return exactly this JSON structure:
-{
-  "inspectorName": "",
-  "companyName": "",
-  "licenseNo": "",
-  "street": "",
-  "city": "",
-  "state": "",
-  "zip": "",
-  "buyerEmail": "",
-  "sellerEmail": "",
-  "realtorEmail": ""
-}`,
-        `Here is the inspection report text to extract fields from:\n\n${truncated}`
+Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":""}`,
+        `Extract from this inspection report:\n\n${reportText.slice(0, 5000)}`
       );
-
       let parsed;
-      try {
-        parsed = safeParseJSON(raw);
-      } catch (parseErr) {
-        console.error("Parse JSON failed:", parseErr.message);
-        parsed = {
-          inspectorName: "", companyName: "", licenseNo: "",
-          street: "", city: "", state: "", zip: "",
-          buyerEmail: "", sellerEmail: "", realtorEmail: ""
-        };
-      }
-
-      // Clean up any accidental "Unknown" or placeholder values
-      const cleaned = {};
-      for (const [k, v] of Object.entries(parsed)) {
-        const val = String(v || "").trim();
-        cleaned[k] = (val === "Unknown" || val === "N/A" || val === "n/a" || val === "null") ? "" : val;
-      }
-
+      try { parsed = parseJSON(raw); }
+      catch { parsed = { inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"" }; }
+      const cleaned = Object.fromEntries(
+        Object.entries(parsed).map(([k,v]) => {
+          const s = String(v||"").trim();
+          return [k, ["Unknown","N/A","n/a","null","none"].includes(s) ? "" : s];
+        })
+      );
       return res.status(200).json({ parsed: cleaned });
     }
 
-    // ── MODE: ANALYZE ────────────────────────────────────────────
+    // ── ANALYZE MODE ──────────────────────────────────────────
     if (mode === "analyze") {
-      const token = (req.headers.authorization || "").replace("Bearer ", "");
-      if (!token) return res.status(401).json({ error: "Login required to analyze reports." });
+      const token = (req.headers.authorization||"").replace("Bearer ","");
+      if (!token) return res.status(401).json({ error: "Login required.", code: "AUTH_REQUIRED" });
 
-      // Verify token with Supabase
-      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+      const userRes = await fetch(`${SB}/auth/v1/user`, {
+        headers: { "apikey": SK, "Authorization": `Bearer ${token}` },
       });
       const userData = await userRes.json();
-
-      if (!userRes.ok) {
-        return res.status(401).json({ 
-          error: "Your session has expired. Please sign out and sign back in.",
-          code: "SESSION_EXPIRED"
-        });
-      }
-
+      if (!userRes.ok) return res.status(401).json({ error: "Session expired. Please sign back in.", code: "SESSION_EXPIRED" });
       const userId = userData.id;
 
-      // Get profile
-      const profileRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=*`,
-        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
-      );
-      const profiles = await profileRes.json();
+      const profiles = await sbGet(`profiles?id=eq.${userId}&select=*`);
       const profile = profiles[0];
 
-      // Check realtor access
       if (profile?.role === "realtor") {
         const trialStart = new Date(profile.trial_started_at);
-        const daysSince = (Date.now() - trialStart) / (1000 * 60 * 60 * 24);
+        const daysSince = (Date.now() - trialStart) / 86400000;
         const expired = daysSince > 14;
         const paid = profile.subscription_status === "active";
-        const freeVol = (profile.inspection_count || 0) >= 50;
+        const freeVol = (profile.inspection_count||0) >= 50;
         if (expired && !paid && !freeVol) {
-          return res.status(403).json({
-            code: "TRIAL_EXPIRED",
-            message: "Your 14-day trial has ended. Subscribe for $20/year to continue.",
-          });
+          return res.status(403).json({ code: "TRIAL_EXPIRED", message: "Your 14-day trial has ended. Subscribe for $20/year to continue." });
         }
       }
 
-      const truncated = (reportText || "").slice(0, 4500);
+      const now = new Date().toISOString();
+      const year = new Date().getFullYear();
 
-      const raw = await callClaude(
-        `You are an expert real estate inspection fraud analyst and fairness evaluator.
+      // Save initial record
+      const saved = await sbPost("inspection_reports", {
+        inspector_name: inspectorName||"Unknown",
+        company_name: companyName||null,
+        license_no: licenseNo||null,
+        property_address: propertyAddress||null,
+        submitted_by: userId,
+        status: "analyzing",
+        report_year: year,
+        report_text_excerpt: (reportText||"").slice(0,500),
+        created_at: now,
+        retention_until: new Date(Date.now() + 10*365*24*60*60*1000).toISOString(),
+      });
+      const reportId = saved?.id || null;
 
-Analyze this home inspection report and return a comprehensive, accurate assessment.
+      // ── BALANCED AI ANALYSIS ──────────────────────────────
+      const SYSTEM = `You are a neutral, experienced real estate inspection analyst with 20+ years of experience evaluating inspection reports professionally and fairly.
 
-CRITICAL RULES:
-- Return ONLY a valid JSON object — no markdown, no backticks, no explanation.
-- All scores are integers 0-100.
-- balanceScore meaning: 50 = perfectly balanced. Under 35 = inspector is buyer-biased (flags too many minor/cosmetic issues as major concerns). Over 65 = inspector is seller-biased (downplays or misses real defects that matter).
-- fraudRisk: "Low" = report appears thorough and honest. "Moderate" = some inconsistencies. "High" = significant red flags like missing sections, vague language throughout, or clear bias.
-- inspectorGrade: Overall letter grade A-F based on report quality.
-- strengths and concerns: Be specific to THIS report, not generic. Reference actual findings.
-- emails: Write complete, professional 4-5 sentence emails. Each should be tailored to that recipient's interests.
-- redFlags: Only include if genuine concerns exist. Empty array is fine for good reports.
+## CRITICAL SCORING PHILOSOPHY
 
-Return this exact JSON — all fields required:
+### MAJOR ITEMS — Low bias impact (inspectors SHOULD find these):
+Finding these items is EXPECTED and BALANCED behavior. Do NOT inflate the buyer-bias score for these:
+- Structural issues (foundation, framing, load-bearing elements)
+- Roof condition (leaks, missing shingles, deterioration, age)
+- Electrical (panel issues, wiring, code violations, GFCI)
+- Plumbing (leaks, supply/drain, water heater, pressure)
+- HVAC (age, condition, efficiency, needed repairs)
+- Water intrusion and moisture damage
+- Safety hazards (CO, smoke detectors, stair safety, etc.)
+→ An inspector flagging MANY of these = THOROUGH, not biased
+
+### COSMETIC/MINOR ITEMS — HIGH buyer-bias impact when over-reported:
+These significantly increase the buyer-bias score when an inspector over-reports them:
+- Small paint chips, touch-up needed, scuffs
+- Normal wear on flooring, carpet, countertops
+- Minor landscaping concerns
+- Aging/weathering that is cosmetic only
+- Light fixture aesthetics
+- Caulking at sinks/tubs (normal maintenance)
+- Screen tears, minor hardware issues
+→ Inspector padding report with 10+ cosmetic items = BUYER BIAS
+
+## BALANCE SCORE RULES:
+- 50 = perfectly balanced and professional
+- Under 35 = buyer-biased (too many cosmetic items flagged urgently, alarmist language, excessive minor issues relative to major ones)
+- Over 65 = seller-biased (misses obvious defects, vague throughout, underreports issues)
+- A report with 20 major findings is NOT biased — it is thorough
+- A report with 3 major findings and 25 cosmetic items IS buyer-biased
+
+## OUTPUT STRUCTURE:
+Organize ALL findings into exactly three tiers:
+1. dealBreakers: Structural, safety, major system failures — things that affect deal negotiation significantly
+2. notableIssues: Real repairs needed but not urgent, items nearing end of life, deferred maintenance with cost impact
+3. minorObservations: Cosmetic, normal wear, monitor-only items. Flag isCosmeticOverreach=true if an inspector treats cosmetic items as major concerns.
+
+Return ONLY this JSON object — no markdown, no backticks, no explanation:
 {
-  "trustScore": 75,
-  "fraudRisk": "Low",
-  "summary": "2-3 sentences summarizing the inspection quality and key findings",
-  "strengths": ["specific strength 1", "specific strength 2", "specific strength 3"],
-  "concerns": ["specific concern 1", "specific concern 2", "specific concern 3"],
-  "inspectorGrade": "B",
-  "completenessScore": 75,
-  "technicalScore": 75,
-  "objectivityScore": 75,
-  "balanceScore": 50,
-  "emailBuyer": "Dear Buyer, [professional 4-5 sentence email about what this inspection means for your purchase decision]",
-  "emailSeller": "Dear Seller, [professional 4-5 sentence email about what this inspection means for your sale]",
-  "emailRealtor": "Dear Agent, [professional 4-5 sentence email summarizing key findings and recommended next steps]",
-  "redFlags": [],
-  "recommendation": "One clear, actionable sentence recommending next steps"
-}`,
-        `Inspector: ${inspectorName || "Unknown"}
-Company: ${companyName || "Unknown"}
-License: ${licenseNo || "Not provided"}
-Property: ${propertyAddress || "Not provided"}
+  "trustScore": <0-100>,
+  "fraudRisk": "<Low|Moderate|High>",
+  "balanceScore": <0-100>,
+  "inspectorGrade": "<A|B|C|D|F>",
+  "completenessScore": <0-100>,
+  "technicalScore": <0-100>,
+  "objectivityScore": <0-100>,
+  "summary": "<2-3 professional sentences distinguishing major vs minor findings, not alarmist>",
+  "dealBreakers": [{"item":"<finding>","severity":"<critical|major>","recommendation":"<action>"}],
+  "notableIssues": [{"item":"<finding>","severity":"moderate","recommendation":"<action>"}],
+  "minorObservations": [{"item":"<finding>","severity":"minor","isCosmeticOverreach":<true|false>}],
+  "strengths": ["<specific strength>"],
+  "concerns": ["<specific concern about report quality>"],
+  "biasIndicators": ["<specific pattern indicating buyer bias, if any>"],
+  "redFlags": ["<fraud indicator if any>"],
+  "recommendation": "<one professional actionable sentence>",
+  "emailBuyer": "<4-sentence professional email that clearly separates major findings from cosmetic ones>",
+  "emailSeller": "<4-sentence professional email helping seller understand what genuinely needs addressing>",
+  "emailRealtor": "<4-sentence professional email with deal-relevant summary and recommended next steps>"
+}`;
 
-FULL INSPECTION REPORT TEXT:
-${truncated}`,
-        1500
+      const raw = await claude(
+        SYSTEM,
+        `Inspector: ${inspectorName||"Unknown"}
+Company: ${companyName||"Unknown"}
+License: ${licenseNo||"Not provided"}
+Property: ${propertyAddress||"Not provided"}
+
+INSPECTION REPORT (${(reportText||"").length} characters):
+${(reportText||"").slice(0,5000)}`,
+        2000, true
       );
 
       let analysis;
-      try {
-        analysis = safeParseJSON(raw);
-      } catch (parseErr) {
-        console.error("Analyze JSON failed:", parseErr.message, "\nRaw:", raw.slice(0, 400));
-        return res.status(500).json({ 
-          error: "AI response could not be parsed. The report may be too complex. Please try again." 
-        });
+      try { analysis = parseJSON(raw); }
+      catch (e) {
+        console.error("Analysis parse failed:", e.message, raw.slice(0,200));
+        return res.status(500).json({ error: "AI response could not be parsed. Please try again." });
       }
 
-      // Ensure all fields exist with safe defaults
       const defaults = {
-        trustScore: 70, fraudRisk: "Low", inspectorGrade: "B",
-        completenessScore: 70, technicalScore: 70, objectivityScore: 70, balanceScore: 50,
-        strengths: ["Report submitted for review"], concerns: ["Manual review recommended"],
-        redFlags: [], summary: "Analysis complete. Please review the full report.",
-        recommendation: "Review all findings carefully before proceeding.",
-        emailBuyer: "Dear Buyer, please review the attached inspection analysis carefully before making your final decision.",
-        emailSeller: "Dear Seller, please review the attached inspection analysis to understand the findings.",
-        emailRealtor: "Dear Agent, please review the attached inspection analysis for key findings and next steps."
+        trustScore:70, fraudRisk:"Low", balanceScore:50, inspectorGrade:"B",
+        completenessScore:70, technicalScore:70, objectivityScore:70,
+        summary:"Analysis complete.", dealBreakers:[], notableIssues:[], minorObservations:[],
+        strengths:[], concerns:[], biasIndicators:[], redFlags:[],
+        recommendation:"Review all findings carefully before proceeding.",
+        emailBuyer:"Please review the inspection analysis.",
+        emailSeller:"Please review the inspection analysis.",
+        emailRealtor:"Please review the inspection analysis.",
       };
+      for (const [k,v] of Object.entries(defaults)) {
+        if (analysis[k] === undefined || analysis[k] === null || analysis[k] === "") analysis[k] = v;
+      }
 
-      for (const [key, val] of Object.entries(defaults)) {
-        if (analysis[key] === undefined || analysis[key] === null || analysis[key] === "") {
-          analysis[key] = val;
-        }
+      // Save analysis to DB
+      if (reportId) {
+        sbPatch(`inspection_reports?id=eq.${reportId}`, {
+          status: "complete",
+          trust_score: analysis.trustScore,
+          fraud_risk: analysis.fraudRisk,
+          balance_score: analysis.balanceScore,
+          inspector_grade: analysis.inspectorGrade,
+          completeness_score: analysis.completenessScore,
+          technical_score: analysis.technicalScore,
+          objectivity_score: analysis.objectivityScore,
+          analysis_data: analysis,
+          completed_at: new Date().toISOString(),
+        }).catch(console.error);
       }
 
       // Increment inspection count
       if (userId) {
-        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_KEY,
-            "Authorization": `Bearer ${SUPABASE_KEY}`,
-          },
-          body: JSON.stringify({ inspection_count: (profile?.inspection_count || 0) + 1 }),
-        }).catch(e => console.error("Count increment failed:", e));
+        sbPatch(`profiles?id=eq.${userId}`, {
+          inspection_count: (profile?.inspection_count||0) + 1,
+        }).catch(console.error);
       }
 
-      return res.status(200).json({ analysis });
+      // Update inspector aggregate scores if license provided
+      if (licenseNo && SB && SK) {
+        updateInspectorScores(licenseNo, SB, SK).catch(console.error);
+      }
+
+      return res.status(200).json({ analysis, reportId, saved: !!reportId });
+    }
+
+    // ── RESEND EMAIL MODE ─────────────────────────────────────
+    if (mode === "resend_email") {
+      const { reportId: rid, recipientType, recipientEmail } = req.body;
+      const token = (req.headers.authorization||"").replace("Bearer ","");
+      if (!token) return res.status(401).json({ error: "Login required." });
+
+      const reports = await sbGet(`inspection_reports?id=eq.${rid}&select=*`);
+      const report = reports[0];
+      if (!report) return res.status(404).json({ error: "Report not found." });
+
+      const fiveYearsAgo = new Date(Date.now() - 5*365*24*60*60*1000).toISOString();
+      if (report.created_at < fiveYearsAgo) {
+        return res.status(403).json({ error: "Reports older than 5 years cannot be resent." });
+      }
+
+      // Log the resend
+      await sbPost("email_sends", {
+        report_id: rid,
+        recipient_type: recipientType,
+        recipient_email: recipientEmail,
+        sent_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 5*365*24*60*60*1000).toISOString(),
+      });
+
+      return res.status(200).json({ success: true, message: `Email logged for ${recipientEmail}` });
+    }
+
+    // ── GET REPORTS DASHBOARD ─────────────────────────────────
+    if (mode === "get_reports") {
+      const token = (req.headers.authorization||"").replace("Bearer ","");
+      if (!token) return res.status(401).json({ error: "Login required." });
+      const { search, filterYear, filterRisk } = req.body;
+
+      let query = "inspection_reports?select=*&order=created_at.desc&limit=100";
+      if (filterYear) query += `&report_year=eq.${filterYear}`;
+      if (filterRisk) query += `&fraud_risk=eq.${filterRisk}`;
+
+      const reports = await sbGet(query);
+
+      let filtered = reports;
+      if (search) {
+        const s = search.toLowerCase();
+        filtered = reports.filter(r =>
+          r.inspector_name?.toLowerCase().includes(s) ||
+          r.company_name?.toLowerCase().includes(s) ||
+          r.property_address?.toLowerCase().includes(s) ||
+          r.license_no?.toLowerCase().includes(s)
+        );
+      }
+
+      return res.status(200).json({ reports: filtered });
     }
 
     return res.status(400).json({ error: "Unknown mode." });
 
   } catch (err) {
-    console.error("analyze handler error:", err.message);
+    console.error("analyze error:", err.message);
     return res.status(500).json({ error: "Server error: " + err.message });
   }
 };
+
+async function updateInspectorScores(licenseNo, SB, SK) {
+  const r = await fetch(`${SB}/rest/v1/inspection_reports?license_no=eq.${encodeURIComponent(licenseNo)}&status=eq.complete&select=trust_score,balance_score,completeness_score,technical_score,objectivity_score,inspector_grade,analysis_data`, {
+    headers: { "apikey": SK, "Authorization": `Bearer ${SK}` },
+  });
+  const reports = await r.json();
+  if (!Array.isArray(reports) || reports.length === 0) return;
+
+  const avg = key => Math.round(reports.reduce((s,r) => s+(r[key]||0),0)/reports.length);
+  const grades = reports.map(r=>r.inspector_grade||"C");
+  const gradeMode = grades.sort((a,b)=>grades.filter(v=>v===b).length-grades.filter(v=>v===a).length)[0];
+
+  await fetch(`${SB}/rest/v1/inspector_profiles?license_no=eq.${encodeURIComponent(licenseNo)}`, {
+    method: "PATCH",
+    headers: { "Content-Type":"application/json", "apikey":SK, "Authorization":`Bearer ${SK}` },
+    body: JSON.stringify({
+      avg_trust_score: avg("trust_score"),
+      avg_balance_score: avg("balance_score"),
+      avg_completeness_score: avg("completeness_score"),
+      avg_objectivity_score: avg("objectivity_score"),
+      avg_grade: gradeMode,
+      report_count: reports.length,
+      last_updated: new Date().toISOString(),
+    }),
+  });
+}
