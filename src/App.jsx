@@ -555,7 +555,62 @@ export default function App() {
   const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
   const [missing,setMissing]=useState({});
 
-  useEffect(()=>{const s=getSession();if(s)setSession(s);},[]);
+  useEffect(()=>{const s=getSession();if(s){setSession(s);loadRegistryReports(s.token);};},[]);
+
+  const loadRegistryReports=async(token)=>{
+    if(!token)return;
+    try{
+      const res=await fetch("/api/analyze",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        body:JSON.stringify({mode:"get_reports"}),
+      });
+      const data=await res.json();
+      if(data.reports){
+        // Normalize DB reports to match local report shape
+        const normalized=data.reports.map(r=>({
+          id:r.id,
+          inspectorName:r.inspector_name||"Unknown",
+          companyName:r.company_name||"",
+          licenseNo:r.license_no||"",
+          propertyAddress:r.property_address||"",
+          buyerEmail:r.buyer_email||"",
+          sellerEmail:r.seller_email||"",
+          realtorEmail:r.realtor_email||"",
+          savedToDb:true,
+          date:r.created_at?new Date(r.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}):"",
+          analysis:r.analysis_data||{
+            trustScore:r.trust_score||0,
+            fraudRisk:r.fraud_risk||"Unknown",
+            balanceScore:r.balance_score||50,
+            inspectorGrade:r.inspector_grade||"?",
+            summary:"Analysis data loading...",
+            dealBreakers:[],notableIssues:[],minorObservations:[],
+            strengths:[],concerns:[],biasIndicators:[],redFlags:[],
+            recommendation:"",emailBuyer:"",emailSeller:"",emailRealtor:"",
+          },
+        }));
+        setReports(normalized);
+      }
+    }catch(e){console.error("Failed to load registry:",e);}
+  };
+
+  const deleteReport=async(reportId)=>{
+    if(!session?.token)return;
+    if(!confirm("Permanently delete this report? This cannot be undone."))return;
+    try{
+      const res=await fetch("/api/analyze",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},
+        body:JSON.stringify({mode:"delete_report",reportId}),
+      });
+      const data=await res.json();
+      if(data.success){
+        setReports(r=>r.filter(rpt=>rpt.id!==reportId));
+        showToast("Report deleted.");
+      } else showToast(data.error||"Delete failed","error");
+    }catch{showToast("Network error","error");}
+  };
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
   const setField=k=>v=>setForm(f=>({...f,[k]:v}));
