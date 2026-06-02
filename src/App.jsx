@@ -122,7 +122,7 @@ function AuthModal({onClose,onAuth}) {
               {["buyer","seller","realtor"].map(r=><button key={r} onClick={()=>sf("role")(r)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${form.role===r?C.gold:"#222"}`,background:form.role===r?"rgba(200,168,75,0.1)":"#0a0a0a",color:form.role===r?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",textTransform:"capitalize"}}>{r}</button>)}
             </div>
           </div>
-          {form.role==="realtor"&&<div style={{marginBottom:12}}><label style={lbl}>Realtor License # *</label><input style={inp} placeholder="TX-12345678" value={form.licenseNumber} onChange={e=>sf("licenseNumber")(e.target.value)}/><p style={{color:"#444",fontSize:11,marginTop:5}}>14-day free trial · $20/year · Upload 50+ reports = free first year</p></div>}
+          {form.role==="realtor"&&<div style={{marginBottom:12}}><label style={lbl}>Realtor License # *</label><input style={inp} placeholder="TX-12345678" value={form.licenseNumber} onChange={e=>sf("licenseNumber")(e.target.value)}/><p style={{color:"#444",fontSize:11,marginTop:5}}>14-day free trial · $1/year · Upload 50+ reports = free first year</p></div>}
           {form.role!=="realtor"&&<div style={{background:"rgba(46,204,113,0.05)",border:"1px solid rgba(46,204,113,0.15)",borderRadius:8,padding:"10px 14px",marginBottom:12}}><p style={{color:C.green,fontSize:12}}>✓ Free account — browse registry and view all reports</p></div>}
         </>}
         <button onClick={submit} disabled={loading} style={{...bGold,width:"100%",marginTop:8,opacity:loading?0.7:1}}>{loading?<><Spinner/> Please wait...</>:tab==="signin"?"Sign In →":"Create Account →"}</button>
@@ -179,7 +179,7 @@ function AccountPage({profile,token,showToast}) {
             </div>
             <p style={{color:inspCount>=50?C.green:C.dim,fontSize:11,marginTop:5}}>{inspCount>=50?"✓ Free first year!":(`Upload ${50-inspCount} more to earn free first year`)}</p>
           </div>
-          {(status==="trial"||status==="expired")&&inspCount<50&&<button onClick={startCheckout} disabled={loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:loading?0.7:1}}>{loading?<><Spinner/> Loading...</>:"Subscribe — $20/year →"}</button>}
+          {(status==="trial"||status==="expired")&&inspCount<50&&<button onClick={startCheckout} disabled={loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:loading?0.7:1}}>{loading?<><Spinner/> Loading...</>:"Subscribe — $1/year →"}</button>}
         </div>}
       </div>
     </div>
@@ -551,6 +551,7 @@ export default function App() {
   const [showAuth,setShowAuth]=useState(false);
   const [session,setSession]=useState(null);
   const [mobileMenu,setMobileMenu]=useState(false);
+  const [registrySearch,setRegistrySearch]=useState("");
   const fileRef=useRef();
   const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
   const [missing,setMissing]=useState({});
@@ -815,7 +816,7 @@ export default function App() {
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:32}}>
-          {[{n:"1 in 4",l:"inspectors flagged"},{n:"14-day",l:"free trial"},{n:"$20/yr",l:"after trial"},{n:"10 yrs",l:"data retention"}].map(s=>(
+          {[{n:"1 in 4",l:"inspectors flagged"},{n:"14-day",l:"free trial"},{n:"$1/yr",l:"after trial"},{n:"10 yrs",l:"data retention"}].map(s=>(
             <div key={s.l} style={{...cardSm,textAlign:"center"}}><div style={{fontSize:"clamp(18px,3vw,24px)",fontWeight:800,color:C.gold,fontFamily:"monospace",marginBottom:3}}>{s.n}</div><div style={{fontSize:11,color:C.dim}}>{s.l}</div></div>
           ))}
         </div>
@@ -826,7 +827,7 @@ export default function App() {
           {[
             {title:"Buyer / Seller",price:"Free",color:C.green,features:["Browse inspector registry","View all reports & scores","See major issues summary","No restrictions on viewing"],btn:"green",lbl:"Create Free Account →"},
             {title:"Realtor Trial",price:"14 Days Free",color:C.gold,features:["Upload & analyze reports","Full AI performance reviews","Balance Score on every report","Auto email all parties","PDF export"],btn:"gold",lbl:"Start Free Trial →"},
-            {title:"Realtor Annual",price:"$20 / year",color:C.blue,features:["Everything in trial","Unlimited reports","50+ reports = free first year","Reports saved 10 years","Yearly inspector rankings"],btn:"blue",lbl:"Get Realtor Access →"},
+            {title:"Realtor Annual",price:"$1 / year",color:C.blue,features:["Everything in trial","Unlimited reports","50+ reports = free first year","Reports saved 10 years","Yearly inspector rankings"],btn:"blue",lbl:"Get Realtor Access →"},
           ].map(p=>(
             <div key={p.title} style={{...card,borderColor:`${p.color}30`,display:"flex",flexDirection:"column"}}>
               <div style={{color:p.color,fontSize:10,fontFamily:"monospace",letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:7}}>{p.title}</div>
@@ -917,42 +918,98 @@ export default function App() {
 
       {/* REGISTRY */}
       {view==="database"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
-        <h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Registry</h2>
-        <p style={{color:C.dim,fontSize:14,marginBottom:20}}>Session reports. Full history is in the Reports Dashboard.</p>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+          <div>
+            <h2 style={{fontSize:24,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>Inspector Registry</h2>
+            <p style={{color:C.dim,fontSize:14}}>Organized by property address. Multiple inspections per property are grouped together.</p>
+          </div>
+          <button onClick={()=>loadRegistryReports(session?.token)} style={bGhost}>↻ Refresh</button>
+        </div>
+
+        {/* Search */}
+        <div style={{...cardSm,marginBottom:20,display:"flex",gap:10,alignItems:"center"}}>
+          <span style={{fontSize:16}}>🔍</span>
+          <input
+            style={{...inp,flex:1,fontSize:14,border:"none",background:"transparent",padding:"4px 0"}}
+            placeholder="Search by property address, inspector name, or company..."
+            value={registrySearch}
+            onChange={e=>setRegistrySearch(e.target.value)}
+          />
+          {registrySearch&&<button onClick={()=>setRegistrySearch("")} style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:16}}>✕</button>}
+        </div>
+
         {reports.length===0?(
           <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
             <div style={{fontSize:48,marginBottom:14}}>🔍</div>
-            <p style={{color:C.dim,marginBottom:6}}>No reports in this session yet.</p>
-            <button style={{...bGold,marginTop:14}} onClick={()=>session?navTo("upload"):setShowAuth(true)}>{session?"Submit a report":"Sign In to Submit"}</button>
+            <p style={{color:C.dim,marginBottom:6}}>{session?"No reports found. Submit the first one.":"Sign in to view all reports."}</p>
+            <button style={{...bGold,marginTop:14}} onClick={()=>session?navTo("upload"):setShowAuth(true)}>{session?"Submit a Report":"Sign In to View"}</button>
           </div>
-        ):(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
-            {reports.map(r=>(
-              <div key={r.id} style={card}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                  <div style={{flex:1,minWidth:0,marginRight:10}}>
-                    <div style={{fontWeight:700,fontSize:16,color:"#fff",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.inspectorName}</div>
-                    <div style={{color:C.dim,fontSize:13}}>{r.companyName||"Independent"}</div>
+        ):(()=>{
+          const q=(registrySearch||"").toLowerCase();
+          const filtered=q?reports.filter(r=>
+            (r.propertyAddress||"").toLowerCase().includes(q)||
+            (r.inspectorName||"").toLowerCase().includes(q)||
+            (r.companyName||"").toLowerCase().includes(q)
+          ):reports;
+
+          if(filtered.length===0)return(
+            <div style={{textAlign:"center",padding:"40px",border:`1px dashed ${C.border}`,borderRadius:12}}>
+              <p style={{color:C.dim}}>No reports match "{registrySearch}"</p>
+              <button onClick={()=>setRegistrySearch("")} style={{...bGhost,marginTop:12}}>Clear search</button>
+            </div>
+          );
+
+          // Group by property address
+          const grouped={};
+          filtered.forEach(r=>{
+            const key=(r.propertyAddress||"Unknown Property").trim();
+            if(!grouped[key])grouped[key]=[];
+            grouped[key].push(r);
+          });
+
+          return(
+            <div style={{display:"flex",flexDirection:"column",gap:28}}>
+              {Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([address,propReports])=>(
+                <div key={address}>
+                  {/* Property group header */}
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:10,borderBottom:`2px solid ${C.border}`}}>
+                    <span style={{color:C.gold,fontSize:18}}>📍</span>
+                    <div style={{flex:1}}>
+                      <h3 style={{fontSize:16,fontWeight:700,color:"#fff",marginBottom:2}}>{address}</h3>
+                      <span style={{color:C.dim,fontSize:12}}>{propReports.length} inspection report{propReports.length!==1?"s":""} on file</span>
+                    </div>
+                    <span style={{...tag(C.blue),fontSize:11,padding:"4px 10px"}}>{propReports.length} report{propReports.length!==1?"s":""}</span>
                   </div>
-                  <ScoreBadge score={r.analysis.trustScore}/>
-                </div>
-                <div style={{marginBottom:10}}><BalanceBar score={r.analysis.balanceScore||50}/></div>
-                <div style={{color:C.dim,fontSize:12,marginBottom:6}}>📍 {r.propertyAddress}</div>
-                <p style={{color:"#777",fontSize:12,lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{r.analysis.summary?.slice(0,100)}…</p>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={tag(r.analysis.fraudRisk==="High"?C.red:r.analysis.fraudRisk==="Moderate"?C.gold:C.green)}>{r.analysis.fraudRisk} Risk</span>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    {session?.profile?.role==="admin"&&(
-                      <button onClick={e=>{e.stopPropagation();deleteReport(r.id);}} style={{background:"none",border:`1px solid ${C.red}`,color:C.red,fontSize:11,cursor:"pointer",padding:"3px 10px",borderRadius:4,fontFamily:"inherit",fontWeight:600}}>Delete</button>
-                    )}
-                    <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+                    {propReports.map(r=>(
+                      <div key={r.id} style={card}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                          <div style={{flex:1,minWidth:0,marginRight:10}}>
+                            <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.inspectorName}</div>
+                            <div style={{color:C.dim,fontSize:12}}>{r.companyName||"Independent"} · {r.date}</div>
+                          </div>
+                          {r.analysis?.trustScore&&<ScoreBadge score={r.analysis.trustScore}/>}
+                        </div>
+                        {r.analysis?.balanceScore!==undefined&&<div style={{marginBottom:10}}><BalanceBar score={r.analysis.balanceScore||50}/></div>}
+                        {r.analysis?.summary&&<p style={{color:"#777",fontSize:12,lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{r.analysis.summary.slice(0,120)}…</p>}
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          {r.analysis?.fraudRisk&&<span style={tag(r.analysis.fraudRisk==="High"?C.red:r.analysis.fraudRisk==="Moderate"?C.gold:C.green)}>{r.analysis.fraudRisk} Risk</span>}
+                          <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:"auto"}}>
+                            {session?.profile?.role==="admin"&&r.id&&r.id.includes("-")&&(
+                              <button onClick={e=>{e.stopPropagation();deleteReport(r.id);}} style={{background:"none",border:`1px solid ${C.red}`,color:C.red,fontSize:11,cursor:"pointer",padding:"3px 10px",borderRadius:4,fontFamily:"inherit",fontWeight:600}}>Delete</button>
+                            )}
+                            <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
+                          </div>
+                        </div>
+                        {r.savedToDb&&<div style={{color:C.green,fontSize:10,fontFamily:"monospace",marginTop:6}}>✓ Saved · 10yr retention</div>}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                {r.savedToDb&&<div style={{color:C.green,fontSize:10,fontFamily:"monospace",marginTop:6}}>✓ Saved · 10yr retention</div>}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </main>}
 
       {/* REPORTS DASHBOARD */}
@@ -968,7 +1025,7 @@ export default function App() {
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
           <div><h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Directory</h2><p style={{color:C.dim,fontSize:14}}>Find verified, rated inspectors in your area.</p></div>
-          <button style={bGold}>Register as Inspector — $50/yr →</button>
+          <button style={bGold}>Register as Inspector — $1/yr →</button>
         </div>
         <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
           <div style={{fontSize:48,marginBottom:14}}>🔍</div>
