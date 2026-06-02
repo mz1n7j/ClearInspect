@@ -64,7 +64,6 @@ module.exports = async function handler(req, res) {
 
       const m = session.metadata;
 
-      // Check for conflict of interest — does this license belong to a buyer/seller profile?
       const conflictRes = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?license_number=eq.${encodeURIComponent(m.licenseNo)}&role=neq.inspector&select=id,role,email`,
         { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
@@ -72,7 +71,6 @@ module.exports = async function handler(req, res) {
       const conflicts = await conflictRes.json();
       const hasConflict = conflicts.length > 0;
 
-      // Upsert inspector profile
       await fetch(`${SUPABASE_URL}/rest/v1/inspector_profiles`, {
         method: "POST",
         headers: {
@@ -113,7 +111,6 @@ module.exports = async function handler(req, res) {
       const { licenseNo } = req.body;
       if (!licenseNo) return res.status(400).json({ error: "License number required." });
 
-      // Get inspector profile
       const profileRes = await fetch(
         `${SUPABASE_URL}/rest/v1/inspector_profiles?license_no=eq.${encodeURIComponent(licenseNo)}&select=*`,
         { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
@@ -121,14 +118,12 @@ module.exports = async function handler(req, res) {
       const profiles = await profileRes.json();
       const profile = profiles[0] || null;
 
-      // Get all reports for this inspector
       const reportsRes = await fetch(
         `${SUPABASE_URL}/rest/v1/inspection_reports?license_no=eq.${encodeURIComponent(licenseNo)}&select=*&order=created_at.desc`,
         { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
       );
       const reports = await reportsRes.json();
 
-      // Check conflict of interest
       const conflictRes = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?license_number=eq.${encodeURIComponent(licenseNo)}&role=neq.inspector&select=id,role`,
         { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
@@ -143,7 +138,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // ── UPDATE AGGREGATE SCORES (called after each new analysis) ─
+    // ── UPDATE AGGREGATE SCORES ──────────────────────────────────
     if (action === "update_scores") {
       const { licenseNo } = req.body;
       if (!licenseNo) return res.status(400).json({ error: "License number required." });
@@ -178,6 +173,40 @@ module.exports = async function handler(req, res) {
       });
 
       return res.status(200).json({ updated: true, reportCount: validReports.length });
+    }
+
+    // ── DELETE INSPECTOR (admin only) ────────────────────────────
+    if (action === "delete_inspector") {
+      const { licenseNo, adminUserId } = req.body;
+      if (!licenseNo || !adminUserId) {
+        return res.status(400).json({ error: "License number and admin user ID are required." });
+      }
+
+      // Verify the requesting user is an admin
+      const adminCheckRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${adminUserId}&select=role`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      );
+      const adminData = await adminCheckRes.json();
+
+      if (!adminData || adminData.length === 0 || adminData[0].role !== "admin") {
+        return res.status(403).json({ error: "Forbidden. Admin access required." });
+      }
+
+      // Delete the inspector profile
+      const deleteRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/inspector_profiles?license_no=eq.${encodeURIComponent(licenseNo)}`,
+        {
+          method: "DELETE",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` }
+        }
+      );
+
+      if (!deleteRes.ok) {
+        return res.status(500).json({ error: "Failed to delete inspector profile." });
+      }
+
+      return res.status(200).json({ success: true, message: `Inspector ${licenseNo} has been deleted.` });
     }
 
     return res.status(400).json({ error: "Unknown action." });
