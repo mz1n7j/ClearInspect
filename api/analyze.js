@@ -225,21 +225,20 @@ Return ONLY this JSON object — no markdown, no backticks, no explanation:
   "concerns": ["<specific concern about report quality>"],
   "biasIndicators": ["<specific pattern indicating buyer bias, if any>"],
   "redFlags": ["<fraud indicator if any>"],
-  "recommendation": "<one professional actionable sentence>",
-  "emailBuyer": "<4-sentence professional email that clearly separates major findings from cosmetic ones>",
-  "emailSeller": "<4-sentence professional email helping seller understand what genuinely needs addressing>",
-  "emailRealtor": "<4-sentence professional email with deal-relevant summary and recommended next steps>"
-}`;
+  "recommendation": "<one sentence>",
+  "emailBuyer": "<one paragraph email to buyer - NO line breaks, use spaces only>",
+  "emailSeller": "<one paragraph email to seller - NO line breaks, use spaces only>",
+  "emailRealtor": "<one paragraph email to realtor - NO line breaks, use spaces only>"
+}
 
+CRITICAL: String values must NOT contain line breaks. Write emails as single paragraphs.`;
+
+      const reportClean = (reportText||"").slice(0,4000).replace(/\n+/g," ").replace(/\r/g,"");
       const raw = await claude(
         SYSTEM,
-        `Inspector: ${inspectorName||"Unknown"}
-Company: ${companyName||"Unknown"}
-License: ${licenseNo||"Not provided"}
-Property: ${propertyAddress||"Not provided"}
+        `Inspector: ${inspectorName||"Unknown"} | Company: ${companyName||"Unknown"} | License: ${licenseNo||"N/A"} | Property: ${propertyAddress||"N/A"}
 
-INSPECTION REPORT (${(reportText||"").length} characters):
-${(reportText||"").slice(0,5000)}`,
+REPORT: ${reportClean}`,
         2000, true
       );
 
