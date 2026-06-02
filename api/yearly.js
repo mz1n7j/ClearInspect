@@ -1,6 +1,6 @@
 // api/yearly.js — Run via Vercel Cron on Jan 1st each year
 // Add to vercel.json: {"crons":[{"path":"/api/yearly","schedule":"0 0 1 1 *"}]}
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
 
   const SB = process.env.SUPABASE_URL;
