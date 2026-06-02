@@ -653,12 +653,36 @@ export default function App() {
       const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"parse",reportText:text})});
       const data=await res.json();
       const p=data.parsed||{};
-      const nf={inspectorName:p.inspectorName||"",companyName:p.companyName||"",licenseNo:p.licenseNo||"",street:p.street||"",city:p.city||"",state:p.state||"",zip:p.zip||"",buyerEmail:p.buyerEmail||"",sellerEmail:p.sellerEmail||"",realtorEmail:p.realtorEmail||"",reportText:text,fileName};
+      // Pre-fill with extracted values — empty string means not found
+      const nf={
+        inspectorName:p.inspectorName||"",
+        companyName:p.companyName||"",
+        licenseNo:p.licenseNo||"",
+        street:p.street||"",
+        city:p.city||"",
+        state:p.state||"",
+        zip:p.zip||"",
+        buyerEmail:p.buyerEmail||"",
+        sellerEmail:p.sellerEmail||"",
+        realtorEmail:p.realtorEmail||"",
+        reportText:text,
+        fileName
+      };
       setForm(nf);
-      const m={};["inspectorName","street","city","state","zip"].forEach(k=>{if(!nf[k])m[k]=true;});
-      setMissing(m);setUploadStep(1);
-    }catch{
-      showToast("Could not auto-parse. Fill in details manually.","error");
+      // Only mark as missing if truly empty after extraction
+      const m={};
+      ["inspectorName","street","city","state","zip"].forEach(k=>{
+        if(!nf[k] || nf[k].trim()==="") m[k]=true;
+      });
+      setMissing(m);
+      setUploadStep(1);
+      // Show what was found vs missing
+      const found=Object.entries(nf).filter(([k,v])=>v&&v.trim()&&k!=="reportText"&&k!=="fileName").map(([k])=>k);
+      const notFound=["inspectorName","companyName","street","city","state","zip"].filter(k=>!nf[k]);
+      if(notFound.length>0) showToast(`Found: ${found.length} fields. Missing: ${notFound.join(", ")}. Please fill in.`,"error");
+      else showToast("All fields extracted successfully ✓");
+    }catch(e){
+      showToast("Parse error: "+e.message,"error");
       setForm(f=>({...f,reportText:text,fileName}));
       setMissing({inspectorName:true,street:true,city:true,state:true,zip:true});
       setUploadStep(1);
@@ -672,8 +696,10 @@ export default function App() {
       if(file.type==="application/pdf"||file.name.endsWith(".pdf"))text=await extractPdfText(file);
       else text=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(ev.target.result);r.onerror=rej;r.readAsText(file);});
       if(!text||text.trim().length<20){showToast("Could not read text. Try pasting instead.","error");setParsing(false);return;}
-      await parseReport(text,file.name);
-    }catch{showToast("File read failed. Try pasting instead.","error");setParsing(false);}
+      // Prepend filename as a hint to the parser — address often in filename
+      const hint = `FILE NAME HINT: ${file.name}\n\n`;
+      await parseReport(hint+text, file.name);
+    }catch(e){showToast("File read failed: "+e.message,"error");setParsing(false);}
   };
 
   const handleDrop=e=>{e.preventDefault();setDragOver(false);handleFile(e.dataTransfer.files[0]);};
