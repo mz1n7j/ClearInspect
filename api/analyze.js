@@ -29,24 +29,27 @@ module.exports = async function handler(req, res) {
   }
 
   function parseJSON(str) {
-    // Always extract the outermost { ... } block first — ignores ALL surrounding text
-    const start = str.indexOf("{");
-    const end = str.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) {
-      throw new Error("No JSON object found in response");
+    // Normalize the string - remove any non-printable or special chars
+    // Use regex to find the JSON object
+    const match = str.match(/\{[\s\S]*\}/);
+    if (!match) {
+      throw new Error("No JSON object found. Raw: " + str.slice(0, 100));
     }
-    const extracted = str.slice(start, end + 1);
+    const extracted = match[0];
+    
+    // Try 1: direct parse
     try {
-      const result = JSON.parse(extracted);
-      if (result && typeof result === "object") return result;
-    } catch (e) {
-      // Try fixing trailing commas
-      try {
-        const fixed = extracted.replace(/,(\s*[}\]])/g, "$1");
-        const result = JSON.parse(fixed);
-        if (result && typeof result === "object") return result;
-      } catch {}
-    }
+      const r = JSON.parse(extracted);
+      if (r && typeof r === "object") return r;
+    } catch {}
+    
+    // Try 2: fix trailing commas then parse
+    try {
+      const fixed = extracted.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+      const r = JSON.parse(fixed);
+      if (r && typeof r === "object") return r;
+    } catch {}
+
     throw new Error("JSON parse failed. Extracted: " + extracted.slice(0, 200));
   }
 
