@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
         "payment_method_types[0]": "card",
         "line_items[0][price_data][currency]": "usd",
         "line_items[0][price_data][product_data][name]": "InspectorTrust Realtor — Annual",
-        "line_items[0][price_data][unit_amount]": "2000",
+        "line_items[0][price_data][unit_amount]": "100",
         "line_items[0][price_data][recurring][interval]": "year",
         "line_items[0][quantity]": "1",
         success_url: `${SITE_URL}?subscribed=true`,
