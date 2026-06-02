@@ -874,7 +874,7 @@ export default function App() {
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:32}}>
-          {[{n:"1 in 4",l:"inspectors flagged"},{n:"14-day",l:"free trial"},{n:"$1/yr",l:"after trial"},{n:"10 yrs",l:"data retention"}].map(s=>(
+          {[{n:"1 in 4",l:"inspectors flagged"},{n:"$1",l:"flat fee, all roles"},{n:"$1/yr",l:"after trial"},{n:"10 yrs",l:"data retention"}].map(s=>(
             <div key={s.l} style={{...cardSm,textAlign:"center"}}><div style={{fontSize:"clamp(18px,3vw,24px)",fontWeight:800,color:C.gold,fontFamily:"monospace",marginBottom:3}}>{s.n}</div><div style={{fontSize:11,color:C.dim}}>{s.l}</div></div>
           ))}
         </div>
@@ -883,9 +883,9 @@ export default function App() {
         <p style={{color:C.dim,fontSize:14,marginBottom:18}}>For buyers, sellers, and realtors.</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,marginBottom:40}}>
           {[
-            {title:"Buyer / Seller",price:"$1",color:C.green,features:["Browse inspector registry","View all reports & scores","See major issues summary","No restrictions on viewing"],btn:"green",lbl:"Sign Up — $1 →"},
-            {title:"Realtor",price:"$1",color:C.gold,features:["Upload & analyze reports","Full AI performance reviews","Balance Score on every report","Auto email all parties","PDF export","One-time $1 activation"],btn:"gold",lbl:"Sign Up — $1 →"},
-            {title:"Realtor",price:"$1",color:C.blue,features:["Everything in trial","Unlimited reports","50+ reports = free first year","Reports saved 10 years","Yearly inspector rankings"],btn:"blue",lbl:"Sign Up — $1 →"},
+            {title:"Buyer / Seller",price:"$1",color:C.green,features:["Browse all inspection reports","View inspector Balance Scores","Search reports by property address","One-time $1 activation · No renewals"],btn:"green",lbl:"Sign Up — $1 →"},
+            {title:"Realtor",price:"$1",color:C.gold,features:["Upload & analyze inspection reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export · 10-year storage","One-time $1 activation · No renewals"],btn:"gold",lbl:"Sign Up — $1 →"},
+            {title:"Inspector",price:"$1",color:C.blue,features:["Listed in verified inspector directory","Verified badge on your profile","Aggregate scores from all your reports","Realtors & buyers can find you","Yearly performance rankings","One-time $1 activation · No renewals"],btn:"blue",lbl:"Sign Up — $1 →"},
           ].map(p=>(
             <div key={p.title} style={{...card,borderColor:`${p.color}30`,display:"flex",flexDirection:"column"}}>
               <div style={{color:p.color,fontSize:10,fontFamily:"monospace",letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:7}}>{p.title}</div>
