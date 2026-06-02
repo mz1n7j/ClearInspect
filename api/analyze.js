@@ -218,19 +218,34 @@ A 70-page report is fine IF the findings are substantive. But if 50 of those pag
 - 66-75: Slightly seller-biased
 - Above 75: Seller-biased — missing genuine defects
 
-## GRADING:
-- A (88-100): Excellent — thorough on real issues, appropriate on age-related items
-- B (74-87): Good — solid coverage, minor over-reporting of cosmetic items
-- C (58-73): Average — noticeable pattern of flagging age-appropriate items unnecessarily
-- D (42-57): Below average — significant buyer bias through age-inappropriate findings
-- F (below 42): Severe bias, fraudulent document, or grossly negligent report
+## GRADING — CALIBRATED TO REAL-WORLD STANDARDS:
+- A (88-100): Excellent. Thorough on real defects, appropriately brief on age-related wear, professional language throughout. Rare — most inspectors don't earn this.
+- B (74-87): Good professional report. Covers all major systems well. May have minor over-reporting on cosmetic items but language is professional and non-alarmist.
+- C (58-73): Adequate but buyer-leaning. Inspector is thorough on major systems but also pads the report with age-appropriate wear items that inflate the defect count and benefit the buyer in negotiations. Jacob Beard / "John Smith" type reports typically land here — comprehensive but noticeably buyer-biased on minor items.
+- D (42-57): Below average. Heavy pattern of using cosmetic and age-appropriate items as defects. Alarmist language on routine maintenance. Significant negotiating leverage manufactured through minor items.
+- F (below 42): Reserved ONLY for: fraudulent documents (not real inspections), extreme manufactured defects, completely fabricated findings, or no legitimate inspection performed at all.
 
-## TRUST SCORE:
-- 80-100: Trustworthy professional
-- 65-79: Generally reliable, minor bias tendencies
-- 50-64: Moderate concerns
-- 35-49: Significant bias pattern
-- Below 35: Clear fraud or extreme bias only
+## BALANCE SCORE — CALIBRATED:
+- 55-65: Balanced and professional
+- 45-54: Slightly buyer-leaning — some age-appropriate items flagged
+- 35-44: Moderately buyer-biased — clear pattern of minor item padding (C grade territory)
+- 25-34: Heavily buyer-biased — report designed to manufacture negotiating leverage
+- Below 25: Extreme bias or fraud
+- 66-75: Slightly seller-leaning
+- Above 75: Seller-biased
+
+## TRUST SCORE — CALIBRATED:
+- 80-100: Highly trustworthy professional
+- 65-79: Reliable with minor bias tendencies
+- 50-64: Adequate — some objectivity concerns
+- 35-49: Notable bias concerns — report should be reviewed carefully
+- Below 35: Serious concerns — possible fraud or extreme bias
+
+## REAL-WORLD CALIBRATION EXAMPLES:
+- Inspector documents all major systems thoroughly + lists 40 cosmetic wear items on a 12-year-old home → Grade C, Trust 62, Balance 38 (buyer-biased but competent)
+- Inspector documents major systems only, skips cosmetic items entirely → Grade B, Trust 78, Balance 58
+- Inspector fabricates findings or submits a repair estimate as an inspection → Grade F, Trust 15, Balance 20
+- Inspector documents everything proportionally, uses professional language → Grade A, Trust 88, Balance 58
 
 Return ONLY this JSON — no markdown, no backticks, no line breaks inside strings:
 {
