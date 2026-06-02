@@ -29,37 +29,25 @@ module.exports = async function handler(req, res) {
   }
 
   function parseJSON(str) {
-    // Strip common markdown wrappers
-    const strip = s => s
-      .replace(/^```json/i, "")
-      .replace(/^```/i, "")
-      .replace(/```$/i, "")
-      .trim();
-
-    // Extract the first complete {...} block
-    const extract = s => {
+    // Step 1: extract just the {...} block - works regardless of surrounding text
+    const extractObj = s => {
       const start = s.indexOf("{");
       const end = s.lastIndexOf("}");
       if (start >= 0 && end > start) return s.slice(start, end + 1);
-      return s;
+      return null;
     };
-
-    const clean = strip(str);
-    const extracted = extract(str);
-    const cleanExtracted = extract(clean);
 
     const tries = [
       () => JSON.parse(str),
-      () => JSON.parse(clean),
-      () => JSON.parse(extracted),
-      () => JSON.parse(cleanExtracted),
-      () => JSON.parse(str.replace(/```json|```/g, "").replace(/,\s*([}\]])/g, "$1").trim()),
-      () => JSON.parse(clean.replace(/,\s*([}\]])/g, "$1")),
+      () => JSON.parse(extractObj(str)),
+      () => JSON.parse(str.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim()),
+      () => JSON.parse(extractObj(str.replace(/`{3}json/gi, "").replace(/`{3}/g, "").trim())),
+      () => JSON.parse(extractObj(str.replace(/,\s*([}\]])/g, "$1"))),
     ];
     for (const t of tries) {
       try { const r = t(); if (r && typeof r === "object") return r; } catch {}
     }
-    throw new Error("JSON parse failed. Raw: " + str.slice(0, 150));
+    throw new Error("JSON parse failed. Raw: " + str.slice(0, 200));
   }
 
   async function sbPost(path, body) {
