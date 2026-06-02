@@ -95,13 +95,35 @@ function AuthModal({onClose,onAuth}) {
   const submit=async()=>{
     setError("");setLoading(true);
     try {
-      const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:tab,...form})});
+      // Sign in — direct auth
+      if(tab==="signin"){
+        const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"signin",email:form.email,password:form.password})});
+        const data=await res.json();
+        if(!res.ok){setError(data.error||"Invalid email or password.");setLoading(false);return;}
+        saveSession({token:data.session?.access_token,profile:data.profile});
+        onAuth(data.profile,data.session?.access_token);onClose();
+        return;
+      }
+      // Sign up — route through $1 Stripe payment first
+      if(!form.email||!form.password){setError("Email and password are required.");setLoading(false);return;}
+      if(form.role==="realtor"&&!form.licenseNumber){setError("Realtors must provide a license number.");setLoading(false);return;}
+      const res=await fetch("/api/billing",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          action:"signup_checkout",
+          role:form.role,
+          email:form.email,
+          name:form.name,
+          licenseNumber:form.licenseNumber,
+        }),
+      });
       const data=await res.json();
-      if(!res.ok){setError(data.error||"Something went wrong");setLoading(false);return;}
-      if(tab==="signup"){setTab("signin");setError("Account created! Please sign in.");setLoading(false);return;}
-      saveSession({token:data.session?.access_token,profile:data.profile});
-      onAuth(data.profile,data.session?.access_token);onClose();
-    } catch{setError("Network error.");}
+      if(!res.ok||!data.url){setError(data.error||"Could not start checkout.");setLoading(false);return;}
+      // Store password temporarily in sessionStorage for after payment
+      sessionStorage.setItem("it_pending_signup",JSON.stringify({email:form.email,password:form.password,name:form.name,role:form.role,licenseNumber:form.licenseNumber}));
+      window.location.href=data.url;
+    } catch(e){setError("Network error: "+e.message);}
     finally{setLoading(false);}
   };
   return (
@@ -556,7 +578,43 @@ export default function App() {
   const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
   const [missing,setMissing]=useState({});
 
-  useEffect(()=>{const s=getSession();if(s){setSession(s);loadRegistryReports(s.token);};},[]);
+  useEffect(()=>{
+    const s=getSession();
+    if(s){setSession(s);loadRegistryReports(s.token);}
+
+    // Handle return from Stripe signup checkout
+    const params=new URLSearchParams(window.location.search);
+    if(params.get("signup_success")==="true"){
+      const pending=sessionStorage.getItem("it_pending_signup");
+      if(pending){
+        const {email,password,name,role,licenseNumber}=JSON.parse(pending);
+        sessionStorage.removeItem("it_pending_signup");
+        // Create the account now that payment is confirmed
+        fetch("/api/auth",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:"signup",email,password,name,role,licenseNumber}),
+        }).then(r=>r.json()).then(data=>{
+          if(data.success){
+            // Auto sign in
+            return fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"signin",email,password})});
+          }
+        }).then(r=>r&&r.json()).then(data=>{
+          if(data?.session){
+            saveSession({token:data.session.access_token,profile:data.profile});
+            setSession({token:data.session.access_token,profile:data.profile});
+            showToast("Account created and payment confirmed! Welcome to InspectorTrust ✓");
+          }
+        }).catch(()=>showToast("Payment successful! Please sign in to complete setup."));
+        // Clean URL
+        window.history.replaceState({},"","/");
+      }
+    }
+    if(params.get("signup_cancelled")==="true"){
+      showToast("Signup cancelled — no charge was made.","error");
+      window.history.replaceState({},"","/");
+    }
+  },[]);
 
   const loadRegistryReports=async(token)=>{
     if(!token)return;
@@ -825,9 +883,9 @@ export default function App() {
         <p style={{color:C.dim,fontSize:14,marginBottom:18}}>For buyers, sellers, and realtors.</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,marginBottom:40}}>
           {[
-            {title:"Buyer / Seller",price:"Free",color:C.green,features:["Browse inspector registry","View all reports & scores","See major issues summary","No restrictions on viewing"],btn:"green",lbl:"Create Free Account →"},
-            {title:"Realtor Trial",price:"14 Days Free",color:C.gold,features:["Upload & analyze reports","Full AI performance reviews","Balance Score on every report","Auto email all parties","PDF export"],btn:"gold",lbl:"Start Free Trial →"},
-            {title:"Realtor Annual",price:"$1 / year",color:C.blue,features:["Everything in trial","Unlimited reports","50+ reports = free first year","Reports saved 10 years","Yearly inspector rankings"],btn:"blue",lbl:"Get Realtor Access →"},
+            {title:"Buyer / Seller",price:"$1",color:C.green,features:["Browse inspector registry","View all reports & scores","See major issues summary","No restrictions on viewing"],btn:"green",lbl:"Sign Up — $1 →"},
+            {title:"Realtor",price:"$1",color:C.gold,features:["Upload & analyze reports","Full AI performance reviews","Balance Score on every report","Auto email all parties","PDF export","One-time $1 activation"],btn:"gold",lbl:"Sign Up — $1 →"},
+            {title:"Realtor",price:"$1",color:C.blue,features:["Everything in trial","Unlimited reports","50+ reports = free first year","Reports saved 10 years","Yearly inspector rankings"],btn:"blue",lbl:"Sign Up — $1 →"},
           ].map(p=>(
             <div key={p.title} style={{...card,borderColor:`${p.color}30`,display:"flex",flexDirection:"column"}}>
               <div style={{color:p.color,fontSize:10,fontFamily:"monospace",letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:7}}>{p.title}</div>
