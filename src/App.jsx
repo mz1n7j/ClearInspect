@@ -77,11 +77,11 @@ function StepIndicator({step}) {
   );
 }
 
-function Field({label:l,value,onChange,placeholder,missing,type="text",required}) {
+function Field({label:l,value,onChange,placeholder,missing,onClearMissing,type="text",required}) {
   return (
     <div style={{marginBottom:14}}>
-      <label style={lbl}>{l}{required&&" *"}{missing&&<span style={{marginLeft:8,fontSize:10,color:C.red,background:"rgba(231,76,60,0.1)",padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>Not found — fill in</span>}</label>
-      <input type={type} style={{...inp,borderColor:missing?"rgba(231,76,60,0.4)":"#222"}} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)}/>
+      <label style={lbl}>{l}{required&&" *"}{missing&&!value&&<span style={{marginLeft:8,fontSize:10,color:C.red,background:"rgba(231,76,60,0.1)",padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>Not found — fill in</span>}</label>
+      <input type={type} style={{...inp,borderColor:(missing&&!value)?"rgba(231,76,60,0.4)":"#222"}} placeholder={placeholder} value={value} onChange={e=>{onChange(e.target.value);if(onClearMissing&&e.target.value)onClearMissing();}}/>
     </div>
   );
 }
@@ -650,7 +650,7 @@ export default function App() {
   const parseReport=async(text,fileName)=>{
     setParsing(true);
     try{
-      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"parse",reportText:text.slice(0,5000)})});
+      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"parse",reportText:text})});
       const data=await res.json();
       const p=data.parsed||{};
       const nf={inspectorName:p.inspectorName||"",companyName:p.companyName||"",licenseNo:p.licenseNo||"",street:p.street||"",city:p.city||"",state:p.state||"",zip:p.zip||"",buyerEmail:p.buyerEmail||"",sellerEmail:p.sellerEmail||"",realtorEmail:p.realtorEmail||"",reportText:text,fileName};
