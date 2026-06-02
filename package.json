@@ -1,7 +1,7 @@
 {
-  "name": "clearinspect",
+  "name": "inspectortrust",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,6 +13,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
     "vite": "^5.0.8"
   }
 }
