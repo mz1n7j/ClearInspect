@@ -29,28 +29,46 @@ module.exports = async function handler(req, res) {
   }
 
   function parseJSON(str) {
-    // Normalize the string - remove any non-printable or special chars
-    // Use regex to find the JSON object
-    const match = str.match(/\{[\s\S]*\}/);
+    // Remove all control characters and non-printable chars except newlines/tabs
+    const sanitize = s => s
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+      .replace(/[\u2018\u2019]/g, "\'")
+      .replace(/[\u201C\u201D]/g, "\"")
+      .replace(/[\uFEFF]/g, "");
+
+    const clean = sanitize(str);
+
+    // Find the outermost { ... } block
+    const match = clean.match(/\{[\s\S]*\}/);
     if (!match) {
       throw new Error("No JSON object found. Raw: " + str.slice(0, 100));
     }
     const extracted = match[0];
-    
+
     // Try 1: direct parse
     try {
       const r = JSON.parse(extracted);
       if (r && typeof r === "object") return r;
     } catch {}
-    
-    // Try 2: fix trailing commas then parse
+
+    // Try 2: fix trailing commas
     try {
-      const fixed = extracted.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+      const fixed = extracted
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]");
       const r = JSON.parse(fixed);
       if (r && typeof r === "object") return r;
     } catch {}
 
-    throw new Error("JSON parse failed. Extracted: " + extracted.slice(0, 200));
+    // Try 3: aggressive clean - remove everything after last }
+    try {
+      const lastBrace = extracted.lastIndexOf("}");
+      const trimmed = extracted.slice(0, lastBrace + 1);
+      const r = JSON.parse(trimmed);
+      if (r && typeof r === "object") return r;
+    } catch {}
+
+    throw new Error("JSON parse failed. Extracted: " + extracted.slice(0, 300));
   }
 
   async function sbPost(path, body) {
