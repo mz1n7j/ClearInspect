@@ -23,7 +23,7 @@ const bBlu = {display:"inline-flex",alignItems:"center",justifyContent:"center",
 const bGhost = {display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,background:"transparent",color:C.muted,border:`1px solid #2a2a2a`,borderRadius:6,padding:"7px 12px",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit"};
 const pill = {display:"inline-block",background:"rgba(200,168,75,0.1)",border:"1px solid rgba(200,168,75,0.3)",color:C.gold,padding:"4px 14px",borderRadius:100,fontSize:11,letterSpacing:"0.12em",fontFamily:"monospace"};
 const tag = c => ({display:"inline-block",color:c,background:`${c}15`,border:`1px solid ${c}40`,borderRadius:4,fontSize:11,fontFamily:"monospace",fontWeight:700,padding:"2px 10px"});
-const tabB = a => ({borderBottom:`2px solid ${a?C.gold:"transparent"}`,color:a?C.gold:C.dim,background:"none",border:"none",borderBottom:`2px solid ${a?C.gold:"transparent"}`,padding:"11px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0});
+const tabB = a => ({color:a?C.gold:C.dim,background:"none",border:"none",borderBottom:`2px solid ${a?C.gold:"transparent"}`,padding:"11px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0});
 const mOv = {position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)",zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center"};
 const mBox = {background:C.surface,border:"1px solid #2a2a2a",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:460,padding:"28px 24px 40px",maxHeight:"90vh",overflowY:"auto",animation:"slideUp 0.3s ease"};
 
