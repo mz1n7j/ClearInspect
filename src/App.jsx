@@ -1179,6 +1179,7 @@ function ReportView({report,onSendEmails,emailSending,emailSent,onBack}) {
       </div>
 
       {tab==="overview"&&<div style={{display:"flex",flexDirection:"column",gap:14,animation:"fadeIn 0.2s ease"}}>
+        {a.homeAgeContext&&<div style={{background:"rgba(52,152,219,0.06)",border:"1px solid rgba(52,152,219,0.2)",borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:10,marginBottom:4}}><span style={{fontSize:16}}>🏠</span><p style={{fontSize:13,color:"#7fb3d3"}}>{a.homeAgeContext}</p></div>}
         <div style={card}><div style={cTitle}>AI Summary</div><p style={{fontSize:14,color:"#aaa",lineHeight:1.75}}>{a.summary}</p></div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14}}>
           <div style={card}><div style={{color:C.green,fontSize:11,fontFamily:"monospace",letterSpacing:"0.1em",marginBottom:10}}>✓ STRENGTHS</div>{(a.strengths||[]).map((s,i)=><div key={i} style={{display:"flex",gap:8,fontSize:13,color:"#aaa",marginBottom:7}}><span style={{color:C.green,flexShrink:0}}>+</span>{s}</div>)}</div>
