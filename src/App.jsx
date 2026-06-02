@@ -909,29 +909,30 @@ function ReportView({report,onSendEmails,emailSending,emailSent,onBack}) {
       y=50;doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#C8A84B");
       doc.text("INSPECTORTRUST · INSPECTOR PERFORMANCE REVIEW",W/2,y,{align:"center"});
       y=68;doc.setFontSize(22);doc.setFont("helvetica","bold");sc("#f0f0f0");
-      const nL=doc.splitTextToSize(report.inspectorName.toUpperCase(),cW);doc.text(nL,W/2,y,{align:"center"});y+=nL.length*10;
-      doc.setFontSize(11);sc("#C8A84B");doc.text(report.companyName||"Independent",W/2,y+4,{align:"center"});
-      const cx=W/2,cy2=152,sc2=a.trustScore>=80?"#2ecc71":a.trustScore>=55?"#C8A84B":"#e74c3c";
+      const inspName=(report.inspectorName||"Unknown Inspector").toUpperCase();
+      const nL=doc.splitTextToSize(inspName,cW);doc.text(nL,W/2,y,{align:"center"});y+=nL.length*10;
+      doc.setFontSize(11);sc("#C8A84B");doc.text(String(report.companyName||"Independent"),W/2,y+4,{align:"center"});
+      const cx=W/2,cy2=152,sc2=(a.trustScore||0)>=80?"#2ecc71":(a.trustScore||0)>=55?"#C8A84B":"#e74c3c";
       sc("#1a1a1a","fill");sc(sc2,"draw");doc.setLineWidth(1.5);doc.circle(cx,cy2,22,"FD");
-      doc.setFontSize(22);doc.setFont("helvetica","bold");sc(sc2);doc.text(String(a.trustScore),cx,cy2+3,{align:"center"});
+      doc.setFontSize(22);doc.setFont("helvetica","bold");sc(sc2);doc.text(String(a.trustScore||0),cx,cy2+3,{align:"center"});
       doc.setFontSize(7);sc("#888");doc.text("TRUST SCORE",cx,cy2+10,{align:"center"});
       sc("#111","fill");sc("#2a2a2a","draw");doc.setLineWidth(0.3);doc.roundedRect(m,185,cW,30,3,3,"FD");
       doc.setFontSize(8);sc("#888");
       doc.text("PROPERTY",m+6,196);doc.text("LICENSE",m+6,204);doc.text("DATE",m+6,212);
-      sc("#ccc");doc.text(report.propertyAddress||"N/A",m+42,196);doc.text(report.licenseNo||"N/A",m+42,204);doc.text(report.date,m+42,212);
+      sc("#ccc");doc.text(String(report.propertyAddress||"N/A"),m+42,196);doc.text(String(report.licenseNo||"N/A"),m+42,204);doc.text(String(report.date||new Date().toLocaleDateString()),m+42,212);
       doc.setFontSize(6);doc.setFont("helvetica","italic");sc("#333");
       doc.text(doc.splitTextToSize("DISCLAIMER: AI-generated analysis. Not a legal determination or official licensing board finding.",cW),W/2,252,{align:"center"});
       sc("#C8A84B","fill");doc.rect(0,277,W,2,"F");
       ap();
       const sh=title=>{cy(14);sc("#C8A84B","fill");doc.rect(m,y-4,3,10,"F");doc.setFontSize(8);doc.setFont("helvetica","bold");sc("#C8A84B");doc.text(title,m+6,y+3);y+=12;sc("#1e1e1e","draw");doc.setLineWidth(0.2);doc.line(m,y-2,W-m,y-2);y+=4;};
-      doc.setFontSize(7);sc("#444");doc.text("INSPECTORTRUST",m,y);doc.text(`${report.inspectorName} · ${report.date}`,W-m,y,{align:"right"});
+      doc.setFontSize(7);sc("#444");doc.text("INSPECTORTRUST",m,y);doc.text(String(`${report.inspectorName||"Inspector"} · ${report.date||""}`),W-m,y,{align:"right"});
       sc("#C8A84B","fill");doc.rect(m,y+2,cW,0.4,"F");y+=10;
       sh("AI SUMMARY");doc.setFontSize(10);doc.setFont("helvetica","italic");sc("#aaa");
-      const sL=doc.splitTextToSize(a.summary||"",cW);doc.text(sL,m,y);y+=sL.length*5.5+8;
-      if(a.dealBreakers?.length){sh("DEAL BREAKERS / MAJOR CONCERNS");a.dealBreakers.forEach(f=>{cy(10);sc("#e74c3c","fill");doc.rect(m,y-3,2.5,2.5,"F");doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#ddd");const ls=doc.splitTextToSize(`${f.item}${f.recommendation?" — "+f.recommendation:""}`,cW-8);doc.text(ls,m+6,y);y+=ls.length*5+3;});y+=4;}
-      if(a.notableIssues?.length){sh("NOTABLE ISSUES");a.notableIssues.forEach(f=>{cy(10);sc("#C8A84B","fill");doc.rect(m,y-3,2.5,2.5,"F");doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#bbb");const ls=doc.splitTextToSize(f.item,cW-8);doc.text(ls,m+6,y);y+=ls.length*5+3;});}
-      if(a.minorObservations?.length){sh("MINOR OBSERVATIONS");a.minorObservations.filter(f=>f.isCosmeticOverreach).forEach(f=>{cy(10);sc("#e74c3c","fill");doc.rect(m,y-3,2.5,2.5,"F");doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#888");const ls=doc.splitTextToSize(f.item+" [OVERREACH]",cW-8);doc.text(ls,m+6,y);y+=ls.length*5+3;});}
-      doc.save(`InspectorTrust_${report.inspectorName.replace(/\s+/g,"_")}.pdf`);
+      const sL=doc.splitTextToSize(String(a.summary||"No summary available."),cW);doc.text(sL,m,y);y+=sL.length*5.5+8;
+      if(a.dealBreakers?.length){sh("DEAL BREAKERS / MAJOR CONCERNS");a.dealBreakers.forEach(f=>{cy(10);sc("#e74c3c","fill");doc.rect(m,y-3,2.5,2.5,"F");doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#ddd");const ls=doc.splitTextToSize(String(`${f.item||""}${f.recommendation?" — "+f.recommendation:""}`),cW-8);doc.text(ls,m+6,y);y+=ls.length*5+3;});y+=4;}
+      if(a.notableIssues?.length){sh("NOTABLE ISSUES");a.notableIssues.forEach(f=>{cy(10);sc("#C8A84B","fill");doc.rect(m,y-3,2.5,2.5,"F");doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#bbb");const ls=doc.splitTextToSize(String(f.item||""),cW-8);doc.text(ls,m+6,y);y+=ls.length*5+3;});}
+      if(a.minorObservations?.length){sh("MINOR OBSERVATIONS");a.minorObservations.filter(f=>f.isCosmeticOverreach).forEach(f=>{cy(10);sc("#e74c3c","fill");doc.rect(m,y-3,2.5,2.5,"F");doc.setFontSize(9);doc.setFont("helvetica","normal");sc("#888");const ls=doc.splitTextToSize(String((f.item||"")+" [OVERREACH]"),cW-8);doc.text(ls,m+6,y);y+=ls.length*5+3;});}
+      doc.save(`InspectorTrust_${(report.inspectorName||"Report").replace(/\s+/g,"_")}.pdf`);
     }catch(e){alert("PDF failed: "+e.message);}
     finally{setPdfExp(false);}
   };
