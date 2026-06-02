@@ -597,6 +597,15 @@ export default function App() {
 
   const deleteReport=async(reportId)=>{
     if(!session?.token)return;
+    // Check if this is a real DB UUID or a local fake ID
+    const isRealId = reportId && reportId.length > 20 && reportId.includes("-");
+    if(!isRealId){
+      // Reload from DB first to get real IDs
+      showToast("Refreshing reports from database...","error");
+      await loadRegistryReports(session.token);
+      showToast("Reports refreshed. Please try deleting again.","error");
+      return;
+    }
     if(!confirm("Permanently delete this report? This cannot be undone."))return;
     try{
       const res=await fetch("/api/analyze",{
@@ -607,7 +616,7 @@ export default function App() {
       const data=await res.json();
       if(data.success){
         setReports(r=>r.filter(rpt=>rpt.id!==reportId));
-        showToast("Report deleted.");
+        showToast("Report deleted successfully.");
       } else showToast(data.error||"Delete failed","error");
     }catch{showToast("Network error","error");}
   };
