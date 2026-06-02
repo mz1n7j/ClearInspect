@@ -614,7 +614,7 @@ export default function App() {
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
   const setField=k=>v=>setForm(f=>({...f,[k]:v}));
-  const onAuth=(profile,token)=>{const s={token,profile};saveSession(s);setSession(s);};
+  const onAuth=(profile,token)=>{const s={token,profile};saveSession(s);setSession(s);loadRegistryReports(token);};
   const signOut=()=>{clearSession();setSession(null);setView("home");showToast("Signed out.");setMobileMenu(false);};
   const navTo=v=>{setView(v);setMobileMenu(false);if(v==="upload")setUploadStep(0);};
 
@@ -726,6 +726,7 @@ export default function App() {
       setView("report");setUploadStep(0);
       setForm({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
       showToast(data.saved?"Report analyzed and saved permanently ✓":"Report analyzed.");
+      if(data.saved&&session?.token)setTimeout(()=>loadRegistryReports(session.token),2000);
       if(session.profile){const up={...session.profile,inspection_count:(session.profile.inspection_count||0)+1};const ns={...session,profile:up};saveSession(ns);setSession(ns);}
     }catch(err){showToast("Analysis failed: "+err.message,"error");setUploadStep(1);}
     finally{setUploading(false);}
