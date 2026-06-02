@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -328,6 +328,36 @@ ${(reportText||"").slice(0,5000)}`,
       }
 
       return res.status(200).json({ reports: filtered });
+    }
+
+    // ── DELETE REPORT (admin only) ───────────────────────────
+    if (mode === "delete_report") {
+      const token = (req.headers.authorization||"").replace("Bearer ","");
+      if (!token) return res.status(401).json({ error: "Login required." });
+
+      const userRes = await fetch(`${SB}/auth/v1/user`, {
+        headers: { "apikey": SK, "Authorization": `Bearer ${token}` },
+      });
+      const userData = await userRes.json();
+      if (!userRes.ok) return res.status(401).json({ error: "Session expired." });
+
+      // Check admin role
+      const profiles = await sbGet(`profiles?id=eq.${userData.id}&select=role`);
+      const profile = profiles[0];
+      if (profile?.role !== "admin") {
+        return res.status(403).json({ error: "Only admins can delete reports." });
+      }
+
+      const { reportId } = req.body;
+      if (!reportId) return res.status(400).json({ error: "Report ID required." });
+
+      const r = await fetch(`${SB}/rest/v1/inspection_reports?id=eq.${reportId}`, {
+        method: "DELETE",
+        headers: { "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=minimal" },
+      });
+
+      if (!r.ok) return res.status(500).json({ error: "Delete failed." });
+      return res.status(200).json({ success: true });
     }
 
     return res.status(400).json({ error: "Unknown mode." });
