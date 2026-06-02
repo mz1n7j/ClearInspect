@@ -109,28 +109,34 @@ export default async function handler(req, res) {
       const bottom = fullLen > 4000 ? reportText.slice(-1500) : "";
       const combined = [top, mid, bottom].filter(Boolean).join("\n\n[...]\n\n").slice(0, 6000);
 
-      const PARSE_PROMPT = `You are a data extraction expert for home inspection reports.
+      const PARSE_PROMPT = `You are a data extraction expert for property inspection and repair documents.
 
-YOUR RESPONSE MUST START WITH { AND END WITH }. Nothing before or after. No backticks. No markdown.
+YOUR RESPONSE MUST START WITH { AND END WITH }. No backticks. No markdown. No explanation before or after.
 
-Search the ENTIRE text carefully. The property address may appear anywhere — not just the top.
+IMPORTANT: The text may begin with "FILE NAME HINT:" — use the filename to extract the address.
+Example: If filename is "2309 Lyla Ln_Repair Estimate.pdf" then street="2309 Lyla Ln"
+
+Search ALL sections of the text carefully.
 
 FIELD DEFINITIONS:
-- inspectorName: The licensed inspector who performed this inspection. Look for "Inspector:", "Inspected By:", "Performed By:", "Inspector Name:", "Report Prepared By:", "Certified By:". NOT the client, buyer, or seller.
-- companyName: The home inspection company. Look in the header, footer, near inspector name, or after "Company:". NOT a repair company or real estate firm.
-- licenseNo: Inspector license number. Look for "License #", "License No", "TREC #", "Lic #", "Cert #", "CPI #", "HI-".
-- street: Street number and name of the INSPECTED PROPERTY. Look for "Property Address:", "Subject Property:", "Inspection Address:", "Property Location:", "Address:", or a standalone address near the top. Examples: "123 Main St" or "2309 Lyla Ln".
-- city: City of the inspected property.
-- state: 2-letter abbreviation of the state (TX, CA, FL, NY, etc).
-- zip: 5-digit ZIP code of the inspected property.
-- buyerEmail: Email labeled as buyer or client. Empty string if not found.
-- sellerEmail: Email labeled as seller or owner. Empty string if not found.
-- realtorEmail: Email labeled as agent or realtor. Empty string if not found.
+- inspectorName: Person who performed the inspection or estimate. Look for "Inspector:", "Inspected By:", "Technician:", "Estimator:", "Prepared By:", "Report By:". Empty string if not found.
+- companyName: The company that produced this document. Look in the header, footer, letterhead. Include ANY company name — repair companies, inspection companies, etc.
+- licenseNo: License number. Look for "License #", "TREC #", "Lic #", "Cert #", "HI-". Empty if not found.
+- street: Street number + street name of the SUBJECT PROPERTY. Check in this order:
+  1. "FILE NAME HINT" line at very top — extract address from filename first
+  2. "Property Address:", "Subject Property:", "Address:", "Property:", "Location:"
+  3. Any standalone address like "2309 Lyla Ln" anywhere in the text
+- city: City of the subject property.
+- state: 2-letter state code (TX, CA, FL, etc).
+- zip: 5-digit ZIP code.
+- buyerEmail: Email labeled buyer/client. Empty string if not found.
+- sellerEmail: Email labeled seller. Empty string if not found.
+- realtorEmail: Email labeled agent/realtor. Empty string if not found.
 
-Return this exact JSON object with all 10 fields:
+Return ONLY this JSON with all 10 fields, nothing else:
 {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":""}`;
 
-      const raw = await claude(PARSE_PROMPT, `Extract all fields from this report:\n\n${combined}`, 500, false);
+      const raw = await claude(PARSE_PROMPT, `Extract all fields from this document:\n\n${combined}`, 500, false);
 
       let parsed;
       try { parsed = parseJSON(raw); }
