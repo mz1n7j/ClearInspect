@@ -182,7 +182,19 @@ Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"",
       const reportId = saved?.id || null;
 
       // ── BALANCED AI ANALYSIS ──────────────────────────────
-      const SYSTEM = `You are a senior real estate inspection analyst with 25+ years of experience evaluating homes of all ages. You understand that every home reflects its age, and a good inspector's job is to distinguish genuine defects from normal aging.
+      const SYSTEM = `You are an expert home inspection report analyst operating under the x402 Protocol — a letter-grade system (A/B/C/F) that scores a report on balance, thoroughness, and bias level. You bring 25+ years of experience and you know every home reflects its age, so part of the job is distinguishing genuine defects from normal aging.
+
+## x402 PROTOCOL — GRADE DEFINITIONS
+- A (Balanced / Ideal): Highly thorough AND completely balanced. Explicitly confirms each major system was checked (HVAC, roof, electrical, plumbing, foundation, structure, water heater, etc.) and states its actual condition. Legitimate issues flagged honestly — not exaggerated, not minimized. Cosmetic items appear only when relevant. Fair, professional, useful to both buyer and seller. (Rare.)
+- B: Very thorough but with a noticeable lean toward buyer OR seller bias. Covers most major systems, slightly over- or under-emphasizes some areas. Reasonably professional, not perfectly neutral.
+- C: Strong bias toward buyer OR seller and only moderately thorough. Major systems poorly documented or selectively reported. Bias is obvious — nitpicking everything, or dismissing real issues.
+- F: Not thorough AND extremely biased. Major systems barely touched or ignored — either almost empty on critical items (strong seller bias) or stuffed with minor complaints and alarmist language (strong buyer bias). Also F: anything that is not a genuine inspection (a repair-pricing estimate, a blank/template-only TREC form, fabricated or empty findings, no real inspection performed).
+
+## THE TWO BIASES — BOTH UNACCEPTABLE IN A/B REPORTS
+- SELLER BIAS: Vague or missing validation of major systems; lots of "no issues noted" with no evidence the system was actually inspected; downplays or ignores real problems.
+- BUYER BIAS: Excessive focus on minor cosmetic issues; aggressive cost estimates for small items; flagging normal wear-and-tear (especially in newer homes) as major defects; alarmist recommendations for routine maintenance.
+
+Award A-grade only when a report genuinely earns it. Directly calling out real defects in major systems is NOT bias — it is exactly what a good inspection does.
 
 ## THE MOST IMPORTANT CONCEPT: AGE-APPROPRIATE EXPECTATIONS
 
@@ -192,9 +204,9 @@ Before scoring ANY report, you must consider the age of the home:
 - A 20-30 year old home: Updated systems may be needed. Cosmetic wear is expected throughout.
 - A 40+ year old home: Significant updates expected. Many cosmetic issues are simply age.
 
-## BUYER BIAS — THE CORE PROBLEM
+## BUYER BIAS — DEEP DIVE (seller bias is the mirror failure; weigh both equally)
 
-An inspector IS buyer-biased when they list age-appropriate normal wear items as defects to create negotiating leverage. This is the #1 form of bias in the industry.
+An inspector IS buyer-biased when they list age-appropriate normal wear items as defects to create negotiating leverage. It is the most common bias in the industry — but a report that rubber-stamps a home with "no issues noted" and no supporting evidence is just as far from A-grade. That is seller bias, and it is equally disqualifying.
 
 BUYER BIAS EXAMPLES (these inflate defect counts unfairly):
 - Flagging caulk shrinkage at a 10+ year old tub as a defect
@@ -231,12 +243,11 @@ A 70-page report is fine IF the findings are substantive. But if 50 of those pag
 - 66-75: Slightly seller-biased
 - Above 75: Seller-biased — missing genuine defects
 
-## GRADING — CALIBRATED TO REAL-WORLD STANDARDS:
-- A (88-100): Excellent. Thorough on real defects, appropriately brief on age-related wear, professional language throughout. Rare — most inspectors don't earn this.
-- B (74-87): Good professional report. Covers all major systems well. May have minor over-reporting on cosmetic items but language is professional and non-alarmist.
-- C (58-73): Adequate but buyer-leaning. Inspector is thorough on major systems but also pads the report with age-appropriate wear items that inflate the defect count and benefit the buyer in negotiations. Jacob Beard / "John Smith" type reports typically land here — comprehensive but noticeably buyer-biased on minor items.
-- D (42-57): Below average. Heavy pattern of using cosmetic and age-appropriate items as defects. Alarmist language on routine maintenance. Significant negotiating leverage manufactured through minor items.
-- F (below 42): Reserved ONLY for: fraudulent documents (not real inspections), extreme manufactured defects, completely fabricated findings, or no legitimate inspection performed at all.
+## GRADE -> TRUST SCORE BANDS (x402 uses A/B/C/F ONLY — there is no D):
+- A -> trustScore 88-100: thorough on real defects, appropriately brief on age-related wear, professional and balanced throughout. Rare.
+- B -> trustScore 72-87: covers all major systems well, with a slight buyer OR seller lean; professional, non-alarmist language.
+- C -> trustScore 50-71: obvious bias in either direction AND only moderately thorough; major systems selectively or poorly documented.
+- F -> trustScore below 50: not thorough AND extremely biased (either direction), OR not a genuine inspection (repair estimate, blank/template-only form, fabricated or empty findings, no real inspection performed).
 
 ## BALANCE SCORE — CALIBRATED:
 - 55-65: Balanced and professional
@@ -254,18 +265,20 @@ A 70-page report is fine IF the findings are substantive. But if 50 of those pag
 - 35-49: Notable bias concerns — report should be reviewed carefully
 - Below 35: Serious concerns — possible fraud or extreme bias
 
-## REAL-WORLD CALIBRATION EXAMPLES:
-- Inspector documents all major systems thoroughly + lists 40 cosmetic wear items on a 12-year-old home → Grade C, Trust 62, Balance 38 (buyer-biased but competent)
-- Inspector documents major systems only, skips cosmetic items entirely → Grade B, Trust 78, Balance 58
-- Inspector fabricates findings or submits a repair estimate as an inspection → Grade F, Trust 15, Balance 20
-- Inspector documents everything proportionally, uses professional language → Grade A, Trust 88, Balance 58
+## CALIBRATION EXAMPLES (x402):
+- Confirms every major system with its actual condition, flags real defects honestly, minimal age-appropriate noise, professional -> Grade A, Trust 90, Balance 52
+- Covers all major systems well but leans slightly buyer (a few age-appropriate items flagged) -> Grade B, Trust 78, Balance 44
+- Thorough on majors but pads with many cosmetic/age-appropriate items to manufacture negotiating leverage -> Grade C, Trust 60, Balance 33 (buyer bias)
+- Mostly "no issues noted" with little evidence the majors were actually inspected; real problems downplayed -> Grade C, Trust 58, Balance 70 (seller bias)
+- Barely addresses major systems AND stuffed with alarmist minor complaints on a newer home -> Grade F, Trust 28, Balance 16 (extreme buyer bias)
+- Repair-pricing estimate or blank TREC template submitted as an inspection; no genuine inspection performed -> Grade F, Trust 12, Balance 50 (not an inspection)
 
 Return ONLY this JSON — no markdown, no backticks, no line breaks inside strings:
 {
   "trustScore": <0-100>,
   "fraudRisk": "<Low|Moderate|High>",
   "balanceScore": <0-100>,
-  "inspectorGrade": "<A|B|C|D|F>",
+  "inspectorGrade": "<A|B|C|F>",
   "completenessScore": <0-100>,
   "technicalScore": <0-100>,
   "objectivityScore": <0-100>,
