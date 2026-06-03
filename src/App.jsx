@@ -1130,7 +1130,7 @@ export default function App() {
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
                     {propReports.map(r=>(
-                      <div key={r.id} style={card}>
+                      <div key={r.id} style={{...card,position:"relative"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.inspectorName}</div>
@@ -1143,14 +1143,28 @@ export default function App() {
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                           {r.analysis?.fraudRisk&&<span style={tag(r.analysis.fraudRisk==="High"?C.red:r.analysis.fraudRisk==="Moderate"?C.gold:C.green)}>{r.analysis.fraudRisk} Risk</span>}
                           <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:"auto"}}>
-                            {session?.profile?.role==="admin"&&r.id&&r.id.includes("-")&&(
-                              <button onClick={e=>{e.stopPropagation();deleteReport(r.id);}} style={{background:"none",border:`1px solid ${C.red}`,color:C.red,fontSize:11,cursor:"pointer",padding:"3px 10px",borderRadius:4,fontFamily:"inherit",fontWeight:600}}>Delete</button>
-                            )}
                             <ShareToEmailButton report={r} session={session} showToast={showToast}/>
                             <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
                           </div>
                         </div>
-                        {r.savedToDb&&<div style={{color:C.green,fontSize:10,fontFamily:"monospace",marginTop:6}}>✓ Saved · 10yr retention</div>}
+                        {r.savedToDb&&<div style={{color:C.green,fontSize:10,fontFamily:"monospace",marginTop:6,paddingRight:28}}>✓ Saved · 10yr retention</div>}
+                        {session?.profile?.role==="admin"&&r.id&&r.id.includes("-")&&(
+                          <button
+                            title="Delete report"
+                            aria-label="Delete report"
+                            onClick={e=>{e.stopPropagation();deleteReport(r.id);}}
+                            onMouseEnter={e=>{e.currentTarget.style.color=C.red;}}
+                            onMouseLeave={e=>{e.currentTarget.style.color=C.dim;}}
+                            style={{position:"absolute",bottom:12,right:14,background:"none",border:"none",color:C.dim,cursor:"pointer",padding:4,lineHeight:0,borderRadius:6}}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 6h18"/>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                              <line x1="10" y1="11" x2="10" y2="17"/>
+                              <line x1="14" y1="11" x2="14" y2="17"/>
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
