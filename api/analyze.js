@@ -478,6 +478,18 @@ ${reportClean}`,
       if (!token) return res.status(401).json({ error: "Login required." });
       const { search, filterYear, filterRisk } = req.body;
 
+      // Identify the viewer so we can mark which reports they're allowed to flag.
+      let viewerId = null, viewerRole = null;
+      try {
+        const vr = await fetch(`${SB}/auth/v1/user`, { headers: { "apikey": SK, "Authorization": `Bearer ${token}` } });
+        if (vr.ok) {
+          const ud = await vr.json();
+          viewerId = ud.id;
+          const profs = await sbGet(`profiles?id=eq.${viewerId}&select=role`);
+          viewerRole = profs[0]?.role || null;
+        }
+      } catch (e) { console.error("get_reports viewer lookup failed:", e.message); }
+
       let query = "inspection_reports?select=*&order=created_at.desc&limit=100";
       if (filterYear) query += `&report_year=eq.${filterYear}`;
       if (filterRisk) query += `&fraud_risk=eq.${filterRisk}`;
@@ -495,7 +507,13 @@ ${reportClean}`,
         );
       }
 
-      return res.status(200).json({ reports: filtered });
+      // Admin may flag any report; a realtor may flag only reports they submitted.
+      const enriched = filtered.map(r => ({
+        ...r,
+        can_flag: viewerRole === "admin" || (viewerRole === "realtor" && !!viewerId && r.submitted_by === viewerId),
+      }));
+
+      return res.status(200).json({ reports: enriched, viewerId, viewerRole });
     }
 
     // ── DELETE REPORT (admin only) ───────────────────────────
@@ -526,6 +544,54 @@ ${reportClean}`,
 
       if (!r.ok) return res.status(500).json({ error: "Delete failed." });
       return res.status(200).json({ success: true });
+    }
+
+    // ── FLAG SALE IMPACT (realtor/admin who loaded the report only) ──
+    if (mode === "flag_impact") {
+      const token = (req.headers.authorization||"").replace("Bearer ","");
+      if (!token) return res.status(401).json({ error: "Login required." });
+
+      const userRes = await fetch(`${SB}/auth/v1/user`, {
+        headers: { "apikey": SK, "Authorization": `Bearer ${token}` },
+      });
+      const userData = await userRes.json();
+      if (!userRes.ok) return res.status(401).json({ error: "Session expired." });
+      const userId = userData.id;
+
+      const profiles = await sbGet(`profiles?id=eq.${userId}&select=role`);
+      const role = profiles[0]?.role;
+      if (role !== "realtor" && role !== "admin") {
+        return res.status(403).json({ error: "Only realtors or admins can flag a sale impact." });
+      }
+
+      const { reportId, impacted } = req.body;
+      if (!reportId) return res.status(400).json({ error: "Report ID required." });
+
+      const rows = await sbGet(`inspection_reports?id=eq.${reportId}&select=submitted_by`);
+      const report = rows[0];
+      if (!report) return res.status(404).json({ error: "Report not found." });
+      // Admin can flag any report; a realtor may only flag inspections they loaded.
+      if (role === "realtor" && report.submitted_by !== userId) {
+        return res.status(403).json({ error: "Realtors can only flag inspections they loaded." });
+      }
+
+      const flag = !!impacted;
+      const patchRes = await fetch(`${SB}/rest/v1/inspection_reports?id=eq.${reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          impacted_sale: flag,
+          impacted_sale_at: flag ? new Date().toISOString() : null,
+          impacted_sale_by: flag ? userId : null,
+        }),
+      });
+      const patchText = await patchRes.text();
+      if (!patchRes.ok) {
+        console.error(`flag_impact PATCH failed ${patchRes.status}: ${patchText}`);
+        return res.status(500).json({ error: "Could not update the flag." });
+      }
+      if (patchText === "[]") return res.status(404).json({ error: "Report not found or not updated." });
+      return res.status(200).json({ success: true, impacted: flag });
     }
 
     return res.status(400).json({ error: "Unknown mode." });
