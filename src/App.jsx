@@ -1160,7 +1160,7 @@ function ReportView({report,onSendEmails,emailSending,emailSent,onBack}) {
       const{jsPDF}=window.jspdf;
       const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"letter"});
       const W=215.9,m=18,cW=W-m*2;let y=0;
-      const h2r=h=>{const x=h.replace("#","");return[parseInt(x.slice(0,2),16),parseInt(x.slice(2,4),16),parseInt(x.slice(4,6),16)];};
+      const h2r=h=>{let x=h.replace("#","");if(x.length===3)x=x.split("").map(c=>c+c).join("");return[parseInt(x.slice(0,2),16),parseInt(x.slice(2,4),16),parseInt(x.slice(4,6),16)];};
       const sc=(hex,t="text")=>{const[r,g,b]=h2r(hex);t==="fill"?doc.setFillColor(r,g,b):t==="draw"?doc.setDrawColor(r,g,b):doc.setTextColor(r,g,b);};
       const ap=()=>{doc.addPage();y=m;};
       const cy=(n=12)=>{if(y+n>265)ap();};
