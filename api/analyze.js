@@ -11,7 +11,10 @@ module.exports = async function handler(req, res) {
 
   if (!AK) return res.status(500).json({ error: "Anthropic API key not configured." });
 
-  const { mode, reportText, inspectorName, companyName, licenseNo, propertyAddress } = req.body;
+  // FIX: yearBuilt, homeAge, propertyType, and sqft are now destructured from
+  // req.body. They were referenced in the analyze block below but never declared,
+  // which threw "ReferenceError: yearBuilt is not defined" and 500'd the request.
+  const { mode, reportText, inspectorName, companyName, licenseNo, propertyAddress, yearBuilt, homeAge, propertyType, sqft } = req.body;
 
   async function claude(system, user, tokens, sonnet) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
