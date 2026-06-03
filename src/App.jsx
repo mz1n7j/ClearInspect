@@ -262,6 +262,7 @@ function ReportsDashboard({session,showToast}) {
     tileFilter==="high" ? reports.filter(r=>r.fraud_risk==="High")
     : tileFilter==="buyer" ? reports.filter(r=>r.balance_score&&r.balance_score<35)
     : tileFilter==="seller" ? reports.filter(r=>r.balance_score!==undefined&&r.balance_score>65)
+    : tileFilter==="analyzing" ? reports.filter(r=>r.status!=="complete")
     : reports;
 
   if(selected){
@@ -395,6 +396,7 @@ function ReportsDashboard({session,showToast}) {
           {n:reports.filter(r=>r.fraud_risk==="High").length,l:"High Risk",c:C.red,k:"high"},
           {n:reports.filter(r=>r.balance_score&&r.balance_score<35).length,l:"Buyer-Biased",c:C.gold,k:"buyer"},
           {n:reports.filter(r=>r.balance_score!==undefined&&r.balance_score>65).length,l:"Seller-Biased",c:C.purple,k:"seller"},
+          {n:reports.filter(r=>r.status!=="complete").length,l:"Analyzing",c:C.blue,k:"analyzing"},
         ].map(s=>{
           const active=tileFilter===s.k;
           const ac=s.c||C.gold;
@@ -414,7 +416,7 @@ function ReportsDashboard({session,showToast}) {
       </div>
 
       {tileFilter&&<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,fontSize:12,color:C.dim}}>
-        <span>Showing {displayedReports.length} of {reports.length} · filtered by <b style={{color:C.text}}>{tileFilter==="high"?"High Risk":tileFilter==="buyer"?"Buyer-Biased":"Seller-Biased"}</b></span>
+        <span>Showing {displayedReports.length} of {reports.length} · filtered by <b style={{color:C.text}}>{tileFilter==="high"?"High Risk":tileFilter==="buyer"?"Buyer-Biased":tileFilter==="seller"?"Seller-Biased":"Analyzing"}</b></span>
         <button onClick={()=>setTileFilter(null)} style={{background:"none",border:`1px solid ${C.border2}`,color:C.muted,fontSize:11,cursor:"pointer",padding:"2px 10px",borderRadius:5,fontFamily:"inherit"}}>Clear ✕</button>
       </div>}
 
@@ -701,12 +703,19 @@ export default function App() {
           realtorEmail:r.realtor_email||"",
           savedToDb:true,
           date:r.created_at?new Date(r.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}):"",
-          analysis:r.analysis_data||{
-            trustScore:r.trust_score||0,
-            fraudRisk:r.fraud_risk||"Unknown",
-            balanceScore:r.balance_score||50,
-            inspectorGrade:r.inspector_grade||"?",
-            summary:"Analysis data loading...",
+          status:r.status||"complete",
+          analysis:(r.analysis_data&&Object.keys(r.analysis_data).length)?{
+            ...r.analysis_data,
+            trustScore:r.analysis_data.trustScore??r.trust_score??null,
+            fraudRisk:r.analysis_data.fraudRisk||r.fraud_risk||null,
+            balanceScore:r.analysis_data.balanceScore??r.balance_score??null,
+            inspectorGrade:r.analysis_data.inspectorGrade||r.inspector_grade||null,
+          }:{
+            trustScore:r.trust_score??null,
+            fraudRisk:r.fraud_risk||null,
+            balanceScore:r.balance_score??null,
+            inspectorGrade:r.inspector_grade||null,
+            summary:"",
             dealBreakers:[],notableIssues:[],minorObservations:[],
             strengths:[],concerns:[],biasIndicators:[],redFlags:[],
             recommendation:"",emailBuyer:"",emailSeller:"",emailRealtor:"",
@@ -1157,19 +1166,28 @@ export default function App() {
                     <span style={{...tag(C.blue),fontSize:11,padding:"4px 10px"}}>{propReports.length} report{propReports.length!==1?"s":""}</span>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
-                    {propReports.map(r=>(
+                    {propReports.map(r=>{
+                      const a=r.analysis||{};
+                      const grade=a.inspectorGrade&&a.inspectorGrade!=="?"?a.inspectorGrade:null;
+                      const analyzed=r.status==="complete"&&!!grade;
+                      const gc=grade==="A"?C.green:grade==="B"?C.gold:grade==="C"?"#e67e22":C.red;
+                      return (
                       <div key={r.id} style={{...card,position:"relative"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
                           <div style={{flex:1,minWidth:0,marginRight:10}}>
                             <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.inspectorName}</div>
                             <div style={{color:C.dim,fontSize:12}}>{r.companyName||"Independent"} · {r.date}</div>
                           </div>
-                          {r.analysis?.trustScore&&<ScoreBadge score={r.analysis.trustScore}/>}
+                          {analyzed
+                            ? <span style={{...tag(gc),fontSize:16,fontWeight:800,padding:"3px 12px",fontFamily:"monospace"}}>{grade}</span>
+                            : <span style={{...tag(C.gold),fontSize:10,fontWeight:700,padding:"4px 10px",whiteSpace:"nowrap"}}>⋯ Work in Progress</span>}
                         </div>
-                        {r.analysis?.balanceScore!==undefined&&<div style={{marginBottom:10}}><BalanceBar score={r.analysis.balanceScore||50}/></div>}
-                        {r.analysis?.summary&&<p style={{color:"#777",fontSize:12,lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{r.analysis.summary.slice(0,120)}…</p>}
+                        {analyzed&&a.balanceScore!==undefined&&a.balanceScore!==null&&<div style={{marginBottom:10}}><BalanceBar score={a.balanceScore}/></div>}
+                        {analyzed
+                          ? (a.summary?<p style={{color:"#777",fontSize:12,lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{a.summary.slice(0,120)}…</p>:null)
+                          : <p style={{color:C.dim,fontSize:12,lineHeight:1.6,marginBottom:10,fontStyle:"italic"}}>Analysis in progress — the grade appears once it finishes.</p>}
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          {r.analysis?.fraudRisk&&<span style={tag(r.analysis.fraudRisk==="High"?C.red:r.analysis.fraudRisk==="Moderate"?C.gold:C.green)}>{r.analysis.fraudRisk} Risk</span>}
+                          {analyzed&&a.fraudRisk&&a.fraudRisk!=="Unknown"&&<span style={tag(a.fraudRisk==="High"?C.red:a.fraudRisk==="Moderate"?C.gold:C.green)}>{a.fraudRisk} Risk</span>}
                           <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:"auto"}}>
                             <ShareToEmailButton report={r} session={session} showToast={showToast}/>
                             <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
@@ -1194,7 +1212,8 @@ export default function App() {
                           </button>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
