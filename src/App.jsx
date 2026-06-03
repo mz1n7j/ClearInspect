@@ -574,6 +574,30 @@ export default function App() {
   const [session,setSession]=useState(null);
   const [mobileMenu,setMobileMenu]=useState(false);
   const [registrySearch,setRegistrySearch]=useState("");
+  const [propertyData,setPropertyData]=useState(null);
+  const [lookingUp,setLookingUp]=useState(false);
+
+  const lookupProperty=async(street,city,state,zip)=>{
+    if(!street||!city||!state)return;
+    setLookingUp(true);setPropertyData(null);
+    try{
+      const res=await fetch("/api/property",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({street,city,state,zip}),
+      });
+      const data=await res.json();
+      if(data.found){
+        setPropertyData(data);
+        showToast(`Property found: Built ${data.yearBuilt} · ${data.homeAge} years old ✓`);
+      } else {
+        setPropertyData(null);
+      }
+    }catch(e){
+      console.error("Property lookup failed:",e.message);
+    }
+    finally{setLookingUp(false);}
+  };
   const fileRef=useRef();
   const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
   const [missing,setMissing]=useState({});
@@ -781,7 +805,7 @@ export default function App() {
       const res=await fetch("/api/analyze",{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},
-        body:JSON.stringify({mode:"analyze",inspectorName:form.inspectorName,companyName:form.companyName,licenseNo:form.licenseNo,propertyAddress:addr,reportText:form.reportText}),
+        body:JSON.stringify({mode:"analyze",inspectorName:form.inspectorName,companyName:form.companyName,licenseNo:form.licenseNo,propertyAddress:addr,reportText:form.reportText,yearBuilt:propertyData?.yearBuilt||null,homeAge:propertyData?.homeAge||null,propertyType:propertyData?.propertyType||null,sqft:propertyData?.sqft||null}),
       });
       const data=await res.json();
       if(!res.ok){
@@ -946,8 +970,29 @@ export default function App() {
             <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10}}>
               <Field label="City" value={form.city} onChange={setField("city")} placeholder="Austin" required missing={missing.city}/>
               <Field label="State" value={form.state} onChange={setField("state")} placeholder="TX" required missing={missing.state}/>
-              <Field label="ZIP" value={form.zip} onChange={setField("zip")} placeholder="78701" required missing={missing.zip}/>
+              <Field label="ZIP" value={form.zip} onChange={v=>{setField("zip")(v);if(form.street&&form.city&&form.state&&v.length>=5)lookupProperty(form.street,form.city,form.state,v);}} placeholder="78701" required missing={missing.zip}/>
             </div>
+            {/* Property data banner */}
+            {lookingUp&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(200,168,75,0.06)",border:"1px solid rgba(200,168,75,0.15)",borderRadius:8,fontSize:12,color:C.gold,marginTop:4}}><Spinner/> Looking up property data...</div>}
+            {propertyData&&<div style={{background:"rgba(52,152,219,0.06)",border:"1px solid rgba(52,152,219,0.2)",borderRadius:8,padding:"10px 14px",marginTop:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:14}}>🏠</span><span style={{color:"#7fb3d3",fontWeight:700,fontSize:13}}>Property Found via ATTOM</span><span style={{...tag(C.green),fontSize:10}}>Verified</span></div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
+                {[
+                  ["Year Built",propertyData.yearBuilt||"—"],
+                  ["Home Age",propertyData.homeAge?`${propertyData.homeAge} yrs`:"—"],
+                  ["Type",propertyData.propertyType||"—"],
+                  ["Beds",propertyData.bedrooms||"—"],
+                  ["Baths",propertyData.bathrooms||"—"],
+                  ["Sq Ft",propertyData.sqft?Number(propertyData.sqft).toLocaleString():"—"],
+                ].map(([l,v])=>(
+                  <div key={l} style={{textAlign:"center",background:"#0d0d0d",borderRadius:6,padding:"6px 8px"}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{v}</div>
+                    <div style={{fontSize:10,color:C.dim}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {propertyData.homeAge&&<p style={{color:"#555",fontSize:11,marginTop:8,fontStyle:"italic"}}>AI will use home age ({propertyData.homeAge} years) to calibrate what findings are age-appropriate vs genuine defects.</p>}
+            </div>}
           </div>
           <div style={{...card,marginTop:14}}>
             <div style={cTitle}>Notify Parties <span style={{color:"#444",fontWeight:400}}>(optional)</span></div>
