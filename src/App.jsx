@@ -217,6 +217,7 @@ function ReportsDashboard({session,showToast}) {
   const [filterRisk,setFilterRisk]=useState("");
   const [selected,setSelected]=useState(null);
   const [resending,setResending]=useState(null);
+  const [tileFilter,setTileFilter]=useState(null);
 
   const currentYear=new Date().getFullYear();
   const years=Array.from({length:6},(_,i)=>currentYear-i);
@@ -256,6 +257,12 @@ function ReportsDashboard({session,showToast}) {
 
   const riskColor=r=>r==="High"?C.red:r==="Moderate"?C.gold:C.green;
   const gradeColor=g=>g==="A"?C.green:g==="B"?C.gold:g==="C"?"#e67e22":C.red;
+
+  const displayedReports =
+    tileFilter==="high" ? reports.filter(r=>r.fraud_risk==="High")
+    : tileFilter==="buyer" ? reports.filter(r=>r.balance_score&&r.balance_score<35)
+    : tileFilter==="seller" ? reports.filter(r=>r.balance_score!==undefined&&r.balance_score>65)
+    : reports;
 
   if(selected){
     const a=selected.analysis_data||{};
@@ -381,20 +388,35 @@ function ReportsDashboard({session,showToast}) {
         <button onClick={load} style={{...bGold,padding:"10px 18px",fontSize:13}}>Search</button>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — click a tile to filter, click again to clear */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:20}}>
         {[
-          {n:reports.length,l:"Total Reports"},
-          {n:reports.filter(r=>r.fraud_risk==="High").length,l:"High Risk",c:C.red},
-          {n:reports.filter(r=>r.balance_score&&r.balance_score<35).length,l:"Buyer-Biased",c:C.gold},
-          {n:reports.filter(r=>r.status==="complete").length,l:"Analyzed"},
-        ].map(s=>(
-          <div key={s.l} style={{...cardSm,textAlign:"center"}}>
-            <div style={{fontSize:22,fontWeight:800,color:s.c||C.gold,fontFamily:"monospace",marginBottom:2}}>{s.n}</div>
-            <div style={{fontSize:11,color:C.dim}}>{s.l}</div>
-          </div>
-        ))}
+          {n:reports.length,l:"Total Reports",k:null},
+          {n:reports.filter(r=>r.fraud_risk==="High").length,l:"High Risk",c:C.red,k:"high"},
+          {n:reports.filter(r=>r.balance_score&&r.balance_score<35).length,l:"Buyer-Biased",c:C.gold,k:"buyer"},
+          {n:reports.filter(r=>r.balance_score!==undefined&&r.balance_score>65).length,l:"Seller-Biased",c:C.purple,k:"seller"},
+        ].map(s=>{
+          const active=tileFilter===s.k;
+          const ac=s.c||C.gold;
+          const toggle=()=>setTileFilter(tf=>tf===s.k?null:s.k);
+          return (
+            <div key={s.l} role="button" tabIndex={0}
+              onClick={toggle}
+              onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}}}
+              title={s.k?`Show only ${s.l}`:"Show all reports"}
+              style={{...cardSm,textAlign:"center",cursor:"pointer",userSelect:"none",transition:"border-color .15s, background .15s",border:`1px solid ${active?ac:C.border}`,background:active?`${ac}1f`:cardSm.background}}
+            >
+              <div style={{fontSize:22,fontWeight:800,color:ac,fontFamily:"monospace",marginBottom:2}}>{s.n}</div>
+              <div style={{fontSize:11,color:active?ac:C.dim,fontWeight:active?700:400}}>{s.l}{active&&s.k?" ✓":""}</div>
+            </div>
+          );
+        })}
       </div>
+
+      {tileFilter&&<div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,fontSize:12,color:C.dim}}>
+        <span>Showing {displayedReports.length} of {reports.length} · filtered by <b style={{color:C.text}}>{tileFilter==="high"?"High Risk":tileFilter==="buyer"?"Buyer-Biased":"Seller-Biased"}</b></span>
+        <button onClick={()=>setTileFilter(null)} style={{background:"none",border:`1px solid ${C.border2}`,color:C.muted,fontSize:11,cursor:"pointer",padding:"2px 10px",borderRadius:5,fontFamily:"inherit"}}>Clear ✕</button>
+      </div>}
 
       {/* Reports table */}
       {loading?(
@@ -404,9 +426,15 @@ function ReportsDashboard({session,showToast}) {
           <div style={{fontSize:48,marginBottom:14}}>📋</div>
           <p style={{color:C.dim}}>No reports found.</p>
         </div>
+      ):displayedReports.length===0?(
+        <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
+          <div style={{fontSize:48,marginBottom:14}}>🔍</div>
+          <p style={{color:C.dim,marginBottom:14}}>No reports match this filter.</p>
+          <button onClick={()=>setTileFilter(null)} style={bOut}>Clear filter</button>
+        </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {reports.map(r=>{
+          {displayedReports.map(r=>{
             const a=r.analysis_data||{};
             return (
               <div key={r.id} style={{...card,cursor:"pointer"}} onClick={()=>setSelected(r)}>
