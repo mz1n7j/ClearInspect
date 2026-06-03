@@ -274,18 +274,28 @@ Return ONLY this JSON — no markdown, no backticks, no line breaks inside strin
 CRITICAL: No line breaks inside string values. Single paragraphs only.`;
 
       const reportClean = (reportText||"").slice(0,6000).replace(/\n+/g," ").replace(/\r/g,"");
-      // Try to extract home age from report text
-      const yearBuiltMatch = (reportText||"").match(/(?:year built|built in|constructed in|year of construction)[:\s]+([12][90]\d{2})/i)
-        || (reportText||"").match(/\b(19[5-9]\d|20[0-2]\d)\b/);
-      const yearBuilt = yearBuiltMatch ? yearBuiltMatch[1] : null;
-      const homeAge = yearBuilt ? `${new Date().getFullYear() - parseInt(yearBuilt)} years old (built ${yearBuilt})` : "Age unknown — use context clues in report";
+
+      // Use ATTOM data if available, otherwise extract from report text
+      let resolvedYear = yearBuilt || null;
+      let resolvedAge = homeAge || null;
+      if (!resolvedYear) {
+        const m = (reportText||"").match(/(?:year built|built in|constructed in|year of construction)[:\s]+([12][90]\d{2})/i)
+          || (reportText||"").match(/\b(19[5-9]\d|20[0-2]\d)\b/);
+        if (m) { resolvedYear = m[1]; resolvedAge = new Date().getFullYear() - parseInt(m[1]); }
+      }
+      const homeAgeLabel = resolvedYear
+        ? `${resolvedAge} years old (built ${resolvedYear})`
+        : "Age unknown — base judgment on visible wear and report context";
+      const attomContext = yearBuilt
+        ? `VERIFIED PROPERTY DATA (from ATTOM national database): Built ${resolvedYear} · ${resolvedAge} years old${propertyType?" · "+propertyType:""}${sqft?" · "+Number(sqft).toLocaleString()+" sq ft":""}`
+        : "Property age not verified — estimate from report context";
 
       const raw = await claude(
         SYSTEM,
         `Inspector: ${inspectorName||"Unknown"} | Company: ${companyName||"Unknown"} | License: ${licenseNo||"N/A"} | Property: ${propertyAddress||"N/A"}
-Home Age: ${homeAge}
+${attomContext}
 
-IMPORTANT: Score findings relative to home age. Items that are normal for a ${homeAge} home should NOT be flagged as buyer bias — only items where the inspector is using age-appropriate wear to manufacture negotiating leverage.
+SCORING CONTEXT: This home is ${homeAgeLabel}. Use this to determine which findings are age-appropriate normal wear vs genuine defects. A ${resolvedAge||"unknown"}-year-old home will naturally have: ${resolvedAge>=10?"worn caulk, minor paint chips, carpet wear, weatherstripping wear, minor hardware looseness, small settling cracks — these are NORMAL and should not be flagged as defects or used to lower scores":"most systems near-new, minimal cosmetic wear expected"}.
 
 REPORT TEXT:
 ${reportClean}`,
