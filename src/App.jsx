@@ -573,6 +573,10 @@ export default function App() {
   const [showAuth,setShowAuth]=useState(false);
   const [session,setSession]=useState(null);
   const [mobileMenu,setMobileMenu]=useState(false);
+  const [sharedToken,setSharedToken]=useState(null);
+  const [sharedReport,setSharedReport]=useState(null);
+  const [sharedLoading,setSharedLoading]=useState(false);
+  const [sharedError,setSharedError]=useState("");
   const [registrySearch,setRegistrySearch]=useState("");
   const [propertyData,setPropertyData]=useState(null);
   const [lookingUp,setLookingUp]=useState(false);
@@ -608,6 +612,11 @@ export default function App() {
 
     // Handle return from Stripe signup checkout
     const params=new URLSearchParams(window.location.search);
+    if(params.get("shared")){
+      setSharedToken(params.get("shared"));
+      sessionStorage.setItem("it_shared_token",params.get("shared"));
+      setView("shared");
+    }
     if(params.get("signup_success")==="true"){
       const pending=sessionStorage.getItem("it_pending_signup");
       if(pending){
@@ -628,6 +637,8 @@ export default function App() {
             saveSession({token:data.session.access_token,profile:data.profile});
             setSession({token:data.session.access_token,profile:data.profile});
             showToast("Account created and payment confirmed! Welcome to InspectorTrust ✓");
+            const _st=sessionStorage.getItem("it_shared_token");
+            if(_st){sessionStorage.removeItem("it_shared_token");setSharedToken(_st);setView("shared");}
           }
         }).catch(()=>showToast("Payment successful! Please sign in to complete setup."));
         // Clean URL
@@ -677,6 +688,40 @@ export default function App() {
       }
     }catch(e){console.error("Failed to load registry:",e);}
   };
+
+  const openSharedReport=async(token,sess)=>{
+    const s=sess||session;
+    if(!token)return;
+    if(!s?.token){setShowAuth(true);return;}
+    setSharedLoading(true);setSharedError("");
+    try{
+      const res=await fetch("/api/share",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${s.token}`},
+        body:JSON.stringify({action:"verify",token}),
+      });
+      const data=await res.json();
+      if(res.status===401){setShowAuth(true);setSharedError("Please sign in or create an account to view this report.");return;}
+      if(!res.ok)throw new Error(data.error||"Could not open this report.");
+      const r=data.report||{};
+      setSharedReport({
+        id:r.id,
+        inspectorName:r.inspector_name||"Unknown",
+        companyName:r.company_name||"",
+        licenseNo:r.license_no||"",
+        propertyAddress:r.property_address||"",
+        date:r.created_at?fmt(r.created_at):"",
+        savedToDb:true,
+        analysis:r.analysis_data||{},
+      });
+    }catch(e){setSharedError(e.message);}
+    finally{setSharedLoading(false);}
+  };
+
+  useEffect(()=>{
+    if(sharedToken&&session&&!sharedReport&&!sharedLoading)openSharedReport(sharedToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[sharedToken,session]);
 
   const deleteReport=async(reportId)=>{
     if(!session?.token)return;
@@ -1101,6 +1146,7 @@ export default function App() {
                             {session?.profile?.role==="admin"&&r.id&&r.id.includes("-")&&(
                               <button onClick={e=>{e.stopPropagation();deleteReport(r.id);}} style={{background:"none",border:`1px solid ${C.red}`,color:C.red,fontSize:11,cursor:"pointer",padding:"3px 10px",borderRadius:4,fontFamily:"inherit",fontWeight:600}}>Delete</button>
                             )}
+                            <ShareToEmailButton report={r} session={session} showToast={showToast}/>
                             <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
                           </div>
                         </div>
@@ -1117,6 +1163,36 @@ export default function App() {
 
       {/* REPORTS DASHBOARD */}
       {view==="reports"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><ReportsDashboard session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to access the Reports Dashboard.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
+
+      {/* SHARED REPORT (account-gated open) */}
+      {view==="shared"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
+        {!session?(
+          <div style={{textAlign:"center",padding:"60px 16px"}}>
+            <div style={{fontSize:48,marginBottom:14}}>🔒</div>
+            <h2 style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:8}}>Sign in to view this report</h2>
+            <p style={{color:C.dim,fontSize:14,marginBottom:20}}>This report was shared with you securely. Sign in or create an account to open it.</p>
+            <button style={bGold} onClick={()=>setShowAuth(true)}>Sign In / Sign Up →</button>
+          </div>
+        ):sharedLoading?(
+          <div style={{textAlign:"center",padding:"60px 0"}}><Spinner lg/><p style={{color:C.dim,marginTop:16,fontSize:14}}>Opening report...</p></div>
+        ):sharedError?(
+          <div style={{textAlign:"center",padding:"60px 16px"}}>
+            <div style={{fontSize:48,marginBottom:14}}>⚠️</div>
+            <p style={{color:C.red,fontSize:15,marginBottom:16}}>{sharedError}</p>
+            <button style={bOut} onClick={()=>{setView("home");setSharedToken(null);setSharedReport(null);window.history.replaceState({},"","/");}}>← Go Home</button>
+          </div>
+        ):sharedReport?(
+          <ReportView
+            report={sharedReport}
+            onSendEmails={sendEmails}
+            emailSending={emailSending}
+            emailSent={emailSent}
+            onBack={()=>{setView("home");setSharedToken(null);setSharedReport(null);window.history.replaceState({},"","/");}}
+          />
+        ):(
+          <div style={{textAlign:"center",padding:"60px 0"}}><Spinner lg/></div>
+        )}
+      </main>}
 
       {/* RANKINGS */}
       {view==="rankings"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><YearlyRankings session={session}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to view inspector rankings.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
@@ -1140,6 +1216,60 @@ export default function App() {
 
       <Disclaimer/>
     </div>
+  );
+}
+
+// ── SHARE TO EMAIL (account-gated link) ──────────────────────
+function ShareToEmailButton({report,session,showToast}){
+  const [open,setOpen]=useState(false);
+  const [email,setEmail]=useState("");
+  const [sending,setSending]=useState(false);
+  const isSaved = report?.id && String(report.id).includes("-");
+
+  const send=async()=>{
+    if(!email||!/.+@.+\..+/.test(email)){showToast("Enter a valid email address.","error");return;}
+    if(!session?.token){showToast("Sign in to send.","error");return;}
+    setSending(true);
+    try{
+      const res=await fetch("/api/share",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},
+        body:JSON.stringify({
+          action:"send",
+          reportId:report.id,
+          recipientEmail:email,
+          inspectorName:report.inspectorName,
+          propertyAddress:report.propertyAddress,
+        }),
+      });
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Failed to send.");
+      showToast(`Secure link sent to ${email} ✓`);
+      setEmail("");setOpen(false);
+    }catch(e){showToast(e.message,"error");}
+    finally{setSending(false);}
+  };
+
+  if(!isSaved)return null;
+
+  return (
+    <>
+      <button title="Email a secure link to this report" onClick={e=>{e.stopPropagation();setOpen(true);}} style={{...bGhost,fontSize:12,padding:"4px 10px",gap:6}}>✉ Send</button>
+      {open&&(
+        <div style={mOv} onClick={e=>{e.stopPropagation();setOpen(false);}}>
+          <div style={{...mBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{fontSize:16,fontWeight:800,color:"#fff"}}>Email this report</h3>
+              <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",color:C.dim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+            <p style={{color:C.dim,fontSize:13,marginBottom:14,lineHeight:1.6}}>We&apos;ll email a secure link. The recipient must sign in or create an InspectorTrust account to open the report.</p>
+            <label style={lbl}>Recipient email</label>
+            <input style={inp} type="email" placeholder="recipient@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}/>
+            <button onClick={send} disabled={sending} style={{...bGold,width:"100%",justifyContent:"center",marginTop:14,opacity:sending?0.7:1}}>{sending?<><Spinner/> Sending...</>:"Send Secure Link →"}</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
