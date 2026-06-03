@@ -704,6 +704,9 @@ export default function App() {
           sellerEmail:r.seller_email||"",
           realtorEmail:r.realtor_email||"",
           savedToDb:true,
+          submittedBy:r.submitted_by||null,
+          impactedSale:!!r.impacted_sale,
+          canFlag:!!r.can_flag,
           date:r.created_at?new Date(r.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}):"",
           status:r.status||"complete",
           analysis:(r.analysis_data&&Object.keys(r.analysis_data).length)?{
@@ -761,6 +764,25 @@ export default function App() {
     if(sharedToken&&session&&!sharedReport&&!sharedLoading)openSharedReport(sharedToken);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[sharedToken,session]);
+
+  const toggleImpact=async(report)=>{
+    if(!session?.token)return;
+    const next=!report.impactedSale;
+    setReports(rs=>rs.map(x=>x.id===report.id?{...x,impactedSale:next}:x));
+    try{
+      const res=await fetch("/api/analyze",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},
+        body:JSON.stringify({mode:"flag_impact",reportId:report.id,impacted:next}),
+      });
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Could not update the flag.");
+      showToast(next?"Flagged as impacting the sale ✓":"Flag removed.");
+    }catch(e){
+      setReports(rs=>rs.map(x=>x.id===report.id?{...x,impactedSale:!next}:x));
+      showToast(e.message,"error");
+    }
+  };
 
   const deleteReport=async(reportId)=>{
     if(!session?.token)return;
@@ -1195,6 +1217,19 @@ export default function App() {
                             <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
                           </div>
                         </div>
+                        {(r.canFlag||r.impactedSale)&&(
+                          <div style={{marginTop:8}}>
+                            {r.canFlag?(
+                              <button
+                                onClick={e=>{e.stopPropagation();toggleImpact(r);}}
+                                title={r.impactedSale?"Flagged as impacting the sale — click to remove":"Flag this inspection as having impacted the sale"}
+                                style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:600,padding:"4px 10px",borderRadius:6,border:`1px solid ${r.impactedSale?C.gold:C.border2}`,background:r.impactedSale?`${C.gold}1f`:"transparent",color:r.impactedSale?C.gold:C.muted}}
+                              >⚑ {r.impactedSale?"Impacted the sale ✓":"Did this impact the sale?"}</button>
+                            ):(
+                              <span style={{...tag(C.gold),fontSize:11,fontWeight:600,padding:"4px 10px"}}>⚑ Impacted the sale</span>
+                            )}
+                          </div>
+                        )}
                         {r.savedToDb&&<div style={{color:C.green,fontSize:10,fontFamily:"monospace",marginTop:6,paddingRight:28}}>✓ Saved · 10yr retention</div>}
                         {session?.profile?.role==="admin"&&r.id&&r.id.includes("-")&&(
                           <button
