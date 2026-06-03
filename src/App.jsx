@@ -302,7 +302,7 @@ function ReportsDashboard({session,showToast}) {
                 {type:"realtor",label:"Realtor",icon:"📋"},
               ].map(p=>{
                 const emailKey=`${p.type}_email`;
-                const email=selected[emailKey]||selected.analysis_data?.[`email${p.label}`]||"";
+                const email=selected[emailKey]||"";
                 const key=`${selected.id}-${p.type}`;
                 return (
                   <div key={p.type} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"10px 14px",background:"#0d0d0d",borderRadius:8,border:`1px solid ${C.border}`}}>
@@ -313,13 +313,15 @@ function ReportsDashboard({session,showToast}) {
                         <div style={{fontSize:12,color:C.dim}}>{email||"No email on file"}</div>
                       </div>
                     </div>
-                    <button
-                      onClick={()=>resendEmail(selected,p.type,email)}
-                      disabled={!email||resending===key}
-                      style={{...bGhost,opacity:!email?0.4:1,fontSize:12,padding:"6px 14px"}}
-                    >
-                      {resending===key?<><Spinner/> Sending...</>:"↻ Resend"}
-                    </button>
+                    <EmailPartyButton
+                      reportId={selected.id}
+                      partyLabel={p.label}
+                      defaultEmail={email}
+                      inspectorName={selected.inspector_name}
+                      propertyAddress={selected.property_address}
+                      session={session}
+                      showToast={showToast}
+                    />
                   </div>
                 );
               })}
@@ -1326,6 +1328,53 @@ function ShareToEmailButton({report,session,showToast}){
             <p style={{color:C.dim,fontSize:13,marginBottom:14,lineHeight:1.6}}>We&apos;ll email a secure link. The recipient must sign in or create an InspectorTrust account to open the report.</p>
             <label style={lbl}>Recipient email</label>
             <input style={inp} type="email" placeholder="recipient@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}/>
+            <button onClick={send} disabled={sending} style={{...bGold,width:"100%",justifyContent:"center",marginTop:14,opacity:sending?0.7:1}}>{sending?<><Spinner/> Sending...</>:"Send Secure Link →"}</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── EMAIL A PARTY (account-gated link, per recipient) ────────
+function EmailPartyButton({reportId,partyLabel,defaultEmail,inspectorName,propertyAddress,session,showToast}){
+  const [open,setOpen]=useState(false);
+  const [email,setEmail]=useState("");
+  const [sending,setSending]=useState(false);
+  const valid=reportId&&String(reportId).includes("-");
+  const send=async()=>{
+    if(!email||!/.+@.+\..+/.test(email)){showToast("Enter a valid email address.","error");return;}
+    if(!session?.token){showToast("Sign in to send.","error");return;}
+    setSending(true);
+    try{
+      const res=await fetch("/api/share",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},
+        body:JSON.stringify({action:"send",reportId,recipientEmail:email,inspectorName,propertyAddress}),
+      });
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Failed to send.");
+      showToast(`Secure link sent to ${email} ✓`);
+      setOpen(false);
+    }catch(e){showToast(e.message,"error");}
+    finally{setSending(false);}
+  };
+  if(!valid)return null;
+  return (
+    <>
+      <button title={`Email report to ${partyLabel}`} aria-label={`Email report to ${partyLabel}`} onClick={()=>{setEmail(defaultEmail||"");setOpen(true);}} style={{...bGhost,padding:"8px 11px",fontSize:13,lineHeight:0}}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+      </button>
+      {open&&(
+        <div style={mOv} onClick={()=>setOpen(false)}>
+          <div style={{...mBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{fontSize:16,fontWeight:800,color:"#fff"}}>Email report to {partyLabel}</h3>
+              <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",color:C.dim,fontSize:20,cursor:"pointer"}}>✕</button>
+            </div>
+            <p style={{color:C.dim,fontSize:13,marginBottom:14,lineHeight:1.6}}>We&apos;ll email a secure link. The {partyLabel.toLowerCase()} must sign in or create an InspectorTrust account to open the report.</p>
+            <label style={lbl}>{partyLabel} email</label>
+            <input style={inp} type="email" placeholder="name@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}/>
             <button onClick={send} disabled={sending} style={{...bGold,width:"100%",justifyContent:"center",marginTop:14,opacity:sending?0.7:1}}>{sending?<><Spinner/> Sending...</>:"Send Secure Link →"}</button>
           </div>
         </div>
