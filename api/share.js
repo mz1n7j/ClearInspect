@@ -20,6 +20,17 @@ module.exports = async function handler(req, res) {
 
   const SB_HEADERS = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
 
+  // GET from Supabase, always returns an array, logs failures.
+  async function sbGet(pathAndQuery) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${pathAndQuery}`, { headers: SB_HEADERS });
+      const text = await r.text();
+      if (!r.ok) { console.error(`sbGet ${pathAndQuery} FAILED ${r.status}: ${text}`); return []; }
+      const d = text ? JSON.parse(text) : [];
+      return Array.isArray(d) ? d : [];
+    } catch (e) { console.error(`sbGet ${pathAndQuery} threw: ${e.message}`); return []; }
+  }
+
   const { action } = req.body;
 
   try {
@@ -94,35 +105,67 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // — VERIFY SHARE TOKEN ————————————————————————
-    if (action === "verify") {
+    // — OPEN A SHARED REPORT (account required) ————————————————
+    // Security model: the recipient MUST be signed in. We validate their
+    // Supabase auth token server-side BEFORE returning anything, and the
+    // report content is returned from here — not via a separate, unauthenticated
+    // read — so there is no way to view a report without a valid account.
+    if (action === "verify" || action === "open") {
       const { token } = req.body;
       if (!token) return res.status(400).json({ error: "Token required." });
 
-      const verifyRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/report_shares?token=eq.${encodeURIComponent(token)}&select=*`,
-        { headers: SB_HEADERS }
-      );
-      const shares = await verifyRes.json();
-
-      if (!Array.isArray(shares) || shares.length === 0) {
-        return res.status(404).json({ error: "Invalid or expired share link." });
+      // 1) Require a logged-in user. The frontend must send the signed-in
+      //    user's Supabase access token as the Authorization Bearer header.
+      const authToken = (req.headers.authorization || "").replace("Bearer ", "").trim();
+      if (!authToken) {
+        return res.status(401).json({ error: "Please sign in or create an account to view this report.", code: "AUTH_REQUIRED" });
       }
 
+      // 2) Validate that session against Supabase Auth. A random or expired
+      //    token is rejected here — it cannot be faked with an arbitrary string.
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${authToken}` },
+      });
+      const user = await userRes.json();
+      if (!userRes.ok || !user?.id) {
+        return res.status(401).json({ error: "Your session is invalid or expired. Please sign in again.", code: "SESSION_EXPIRED" });
+      }
+
+      // 3) Look up the share token.
+      const shares = await sbGet(`report_shares?token=eq.${encodeURIComponent(token)}&select=*`);
+      if (shares.length === 0) {
+        return res.status(404).json({ error: "Invalid share link." });
+      }
       const share = shares[0];
 
       if (new Date(share.expires_at) < new Date()) {
         return res.status(410).json({ error: "This share link has expired." });
       }
 
-      // Mark as accessed
+      // 4) OPTIONAL stricter check: only the exact invited email may open it.
+      //    Set this to true to lock a link to the address it was sent to, so a
+      //    forwarded link is useless to anyone else (recommended for sensitive
+      //    reports). Left false here = any signed-in account with the link.
+      const REQUIRE_EMAIL_MATCH = false;
+      if (REQUIRE_EMAIL_MATCH && share.recipient_email &&
+          user.email?.toLowerCase() !== String(share.recipient_email).toLowerCase()) {
+        return res.status(403).json({ error: "This report was shared with a different email address.", code: "EMAIL_MISMATCH" });
+      }
+
+      // 5) Mark as accessed (best effort — not fatal if it fails).
       await fetch(`${SUPABASE_URL}/rest/v1/report_shares?token=eq.${encodeURIComponent(token)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...SB_HEADERS },
         body: JSON.stringify({ accessed: true }),
       });
 
-      return res.status(200).json({ success: true, reportId: share.report_id });
+      // 6) Only now — after auth + token checks pass — fetch and return the
+      //    report. The content never leaves the server for an unauthenticated caller.
+      const reports = await sbGet(`inspection_reports?id=eq.${encodeURIComponent(share.report_id)}&select=*`);
+      const report = reports[0] || null;
+      if (!report) return res.status(404).json({ error: "Report not found." });
+
+      return res.status(200).json({ success: true, reportId: share.report_id, report });
     }
 
     return res.status(400).json({ error: "Invalid action." });
