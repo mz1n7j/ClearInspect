@@ -110,20 +110,26 @@ module.exports = async function handler(req, res) {
       if (!reportText || reportText.trim().length < 10) {
         return res.status(400).json({ error: "Report text too short." });
       }
+      // Inspector identity lives on the cover, in page headers/footers, and in the
+      // signature/certification block (frequently the LAST page). Send head + tail
+      // so we catch all of them instead of only the first page of boilerplate.
+      const metaText = reportText.length > 16000
+        ? reportText.slice(0, 11000) + "\n\n[...middle of report omitted for extraction...]\n\n" + reportText.slice(-5000)
+        : reportText;
       const raw = await claude(
         `You extract structured data from home inspection reports.
 Return ONLY a raw JSON object. No markdown, no backticks, no explanation.
 Use empty string "" for missing fields. Never use "Unknown", "N/A", or null.
 
 FIELD RULES:
-- inspectorName: The LICENSED HOME INSPECTOR who performed the inspection. Look for "Inspector:", "Inspected by:", "Performed by:", "Certified by:". NOT the client, buyer, seller, or repair person.
+- inspectorName: The LICENSED HOME INSPECTOR who performed the inspection. Look for "Inspector:", "Inspected by:", "Performed by:", "Certified by:", and the SIGNATURE / CERTIFICATION block (often the LAST page: "I certify...", "Report prepared by", a signature line with a name under it). The inspector name, company, and TREC/license number commonly appear on the COVER PAGE, repeated in the page HEADER or FOOTER, and again in that certification block — check all of them before giving up. NOT the client, buyer, seller, or repair person.
 - companyName: The HOME INSPECTION COMPANY only. NOT repair companies, NOT real estate agencies.
 - licenseNo: Look for "License #", "TREC #", "HI-", "Lic.", "Cert. #", "CPI#"
 - street/city/state/zip: INSPECTED PROPERTY address only. state = 2-letter abbreviation.
 - buyerEmail/sellerEmail/realtorEmail: Only if explicitly labeled.
 
 Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":""}`,
-        `Extract from this inspection report:\n\n${reportText.slice(0, 5000)}`
+        `Extract from this inspection report:\n\n${metaText}`
       );
       let parsed;
       try { parsed = parseJSON(raw); }
