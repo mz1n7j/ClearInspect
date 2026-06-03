@@ -8,6 +8,7 @@ module.exports = async function handler(req, res) {
   const SB = process.env.SUPABASE_URL;
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const AK = process.env.ANTHROPIC_API_KEY;
+  const ATTOM = process.env.ATTOM_API_KEY;
 
   if (!AK) return res.status(500).json({ error: "Anthropic API key not configured." });
 
@@ -278,20 +279,50 @@ CRITICAL: No line breaks inside string values. Single paragraphs only.`;
 
       const reportClean = (reportText||"").slice(0,6000).replace(/\n+/g," ").replace(/\r/g,"");
 
-      // Use ATTOM data if available, otherwise extract from report text
-      let resolvedYear = yearBuilt || null;
-      let resolvedAge = homeAge || null;
+      // ── RESOLVE PROPERTY FACTS ────────────────────────────
+      // Priority: (1) values passed in the request body, (2) live ATTOM lookup
+      // by address, (3) regex extraction from the report text.
+      let resolvedYear = yearBuilt ? Number(yearBuilt) : null;
+      let resolvedAge = homeAge ? Number(homeAge) : null;
+      let resolvedType = propertyType || null;
+      let resolvedSqft = sqft ? Number(sqft) : null;
+      let yearSource = resolvedYear ? "provided" : null;
+
+      if (!resolvedYear && propertyAddress && ATTOM) {
+        const attom = await attomLookup(propertyAddress, ATTOM);
+        if (attom && attom.yearBuilt) {
+          resolvedYear = attom.yearBuilt;
+          resolvedAge = attom.homeAge;
+          resolvedType = resolvedType || attom.propertyType;
+          resolvedSqft = resolvedSqft || attom.sqft;
+          yearSource = "attom";
+        }
+      }
+
       if (!resolvedYear) {
         const m = (reportText||"").match(/(?:year built|built in|constructed in|year of construction)[:\s]+([12][90]\d{2})/i)
           || (reportText||"").match(/\b(19[5-9]\d|20[0-2]\d)\b/);
-        if (m) { resolvedYear = m[1]; resolvedAge = new Date().getFullYear() - parseInt(m[1]); }
+        if (m) { resolvedYear = parseInt(m[1]); resolvedAge = new Date().getFullYear() - resolvedYear; yearSource = "report"; }
       }
+      if (resolvedYear && resolvedAge == null) resolvedAge = new Date().getFullYear() - resolvedYear;
+
       const homeAgeLabel = resolvedYear
         ? `${resolvedAge} years old (built ${resolvedYear})`
         : "Age unknown — base judgment on visible wear and report context";
-      const attomContext = yearBuilt
-        ? `VERIFIED PROPERTY DATA (from ATTOM national database): Built ${resolvedYear} · ${resolvedAge} years old${propertyType?" · "+propertyType:""}${sqft?" · "+Number(sqft).toLocaleString()+" sq ft":""}`
-        : "Property age not verified — estimate from report context";
+      const attomContext = (resolvedYear && yearSource === "attom")
+        ? `VERIFIED PROPERTY DATA (from ATTOM national database): Built ${resolvedYear} · ${resolvedAge} years old${resolvedType?" · "+resolvedType:""}${resolvedSqft?" · "+Number(resolvedSqft).toLocaleString()+" sq ft":""}`
+        : resolvedYear
+          ? `Property built ${resolvedYear} (${resolvedAge} years old)${resolvedType?" · "+resolvedType:""}${resolvedSqft?" · "+Number(resolvedSqft).toLocaleString()+" sq ft":""} — ${yearSource === "provided" ? "provided with request" : "estimated from report text"}`
+          : "Property age not verified — estimate from report context";
+
+      // Data sent back to the UI so it can show the build year / age
+      const propertyData = {
+        yearBuilt: resolvedYear || null,
+        homeAge: resolvedAge != null ? resolvedAge : null,
+        propertyType: resolvedType || null,
+        sqft: resolvedSqft || null,
+        source: resolvedYear ? yearSource : "unknown",
+      };
 
       const raw = await claude(
         SYSTEM,
@@ -376,7 +407,7 @@ ${reportClean}`,
         updateInspectorScores(licenseNo, SB, SK).catch(console.error);
       }
 
-      return res.status(200).json({ analysis, reportId, saved: !!reportId });
+      return res.status(200).json({ analysis, reportId, saved: !!reportId, propertyData });
     }
 
     // ── RESEND EMAIL MODE ─────────────────────────────────────
@@ -494,4 +525,47 @@ async function updateInspectorScores(licenseNo, SB, SK) {
       last_updated: new Date().toISOString(),
     }),
   });
+}
+
+// Look up a property's build year / type / size from ATTOM by address.
+// Returns null on any failure so analysis still proceeds (falls back to report text).
+async function attomLookup(address, attomKey) {
+  if (!attomKey || !address) return null;
+
+  // ATTOM wants address1 = street, address2 = "City, ST ZIP".
+  // Split on the first comma; everything after it becomes address2.
+  const parts = String(address).split(",").map(s => s.trim()).filter(Boolean);
+  const address1 = parts[0] || String(address);
+  const address2 = parts.length > 1 ? parts.slice(1).join(", ") : "";
+
+  const url = `https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/detail`
+    + `?address1=${encodeURIComponent(address1)}`
+    + `&address2=${encodeURIComponent(address2)}`;
+
+  try {
+    const r = await fetch(url, {
+      headers: { "Accept": "application/json", "apikey": attomKey },
+    });
+    const d = await r.json();
+
+    // status.code === 0 means a match was found; property[] holds the records.
+    if (!r.ok || d?.status?.code !== 0 || !Array.isArray(d.property) || d.property.length === 0) {
+      return null;
+    }
+
+    const p = d.property[0];
+    const yearBuilt = p?.summary?.yearbuilt ? Number(p.summary.yearbuilt) : null;
+    const propertyType = p?.summary?.propclass || p?.summary?.proptype || null;
+    const sqft = p?.building?.size?.universalsize || p?.building?.size?.livingsize || null;
+
+    return {
+      yearBuilt,
+      homeAge: yearBuilt ? new Date().getFullYear() - yearBuilt : null,
+      propertyType,
+      sqft: sqft ? Number(sqft) : null,
+      matchedAddress: p?.address?.oneLine || address,
+    };
+  } catch {
+    return null;
+  }
 }
