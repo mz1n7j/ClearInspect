@@ -140,6 +140,14 @@ Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"",
           return [k, ["Unknown","N/A","n/a","null","none"].includes(s) ? "" : s];
         })
       );
+
+      // Fallback: model found a license number but no inspector name — resolve
+      // the name from TREC's public dataset (Texas inspectors).
+      if (!cleaned.inspectorName && cleaned.licenseNo) {
+        const trecName = await trecLookup(cleaned.licenseNo);
+        if (trecName) { cleaned.inspectorName = trecName; cleaned.inspectorNameSource = "TREC"; }
+      }
+
       return res.status(200).json({ parsed: cleaned });
     }
 
@@ -669,4 +677,69 @@ async function attomLookup(address, attomKey) {
   } catch {
     return null;
   }
+}
+
+// ── TREC INSPECTOR NAME LOOKUP (Texas Open Data Portal / Socrata) ──
+// Resolves an inspector's name from a TREC license number using the public
+// "Inspector License Holder Information" dataset (resource pkr9-9isv on
+// data.texas.gov), refreshed daily. No API key required; set the optional
+// SOCRATA_APP_TOKEN env var to raise the rate limit (1k -> 50k req/hr).
+// Texas-only (TREC licenses Texas inspectors). Returns a name string or null.
+async function trecLookup(licenseNo) {
+  if (!licenseNo) return null;
+  const digits = String(licenseNo).replace(/\D/g, "");
+  if (digits.length < 3) return null;
+  const base = "https://data.texas.gov/resource/pkr9-9isv.json";
+  const token = process.env.SOCRATA_APP_TOKEN;
+  const headers = token ? { "X-App-Token": token } : {};
+  try {
+    // Full-text search by the license number (works without knowing the exact
+    // column name), then confirm an exact license match in the returned rows.
+    const url = `${base}?$q=${encodeURIComponent(digits)}&$limit=10`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) { console.error(`trecLookup HTTP ${r.status}`); return null; }
+    const rows = await r.json();
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    // Only trust a row whose field values contain the exact license number.
+    const matchRow = rows.find(row =>
+      Object.values(row).some(v => String(v).replace(/\D/g, "") === digits)
+    );
+    if (!matchRow) return null;
+
+    return pickInspectorName(matchRow);
+  } catch (e) {
+    console.error("trecLookup failed:", e.message);
+    return null;
+  }
+}
+
+// Pull a human name out of a Socrata row without hardcoding column names
+// (field names vary and can change). Handles "LAST, FIRST" and ALL CAPS.
+function pickInspectorName(row) {
+  if (!row || typeof row !== "object") return null;
+  const entries = Object.entries(row).filter(([, v]) => v != null && String(v).trim());
+  const val = re => { const e = entries.find(([k]) => re.test(k)); return e ? String(e[1]).trim() : ""; };
+
+  const full = val(/full.?name|licensee.?name|license.?holder.?name|legal.?name|mailing.?name|^name$/i);
+  if (full) return normalizeName(full);
+
+  const combined = [val(/first.?name|given/i), val(/middle/i), val(/last.?name|surname|family/i)]
+    .filter(Boolean).join(" ").trim();
+  if (combined) return normalizeName(combined);
+
+  const any = val(/name/i);
+  return any ? normalizeName(any) : null;
+}
+
+function normalizeName(v) {
+  let s = String(v).trim().replace(/\s+/g, " ");
+  if (s.includes(",")) {                       // "LAST, FIRST MIDDLE" -> "FIRST MIDDLE LAST"
+    const [last, rest] = s.split(",");
+    s = `${(rest || "").trim()} ${last.trim()}`.trim();
+  }
+  if (s === s.toUpperCase()) {                 // title-case ALL CAPS
+    s = s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return s;
 }
