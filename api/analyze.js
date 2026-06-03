@@ -271,7 +271,14 @@ A 70-page report is fine IF the findings are substantive. But if 50 of those pag
 - Thorough on majors but pads with many cosmetic/age-appropriate items to manufacture negotiating leverage -> Grade C, Trust 60, Balance 33 (buyer bias)
 - Mostly "no issues noted" with little evidence the majors were actually inspected; real problems downplayed -> Grade C, Trust 58, Balance 70 (seller bias)
 - Barely addresses major systems AND stuffed with alarmist minor complaints on a newer home -> Grade F, Trust 28, Balance 16 (extreme buyer bias)
-- Repair-pricing estimate or blank TREC template submitted as an inspection; no genuine inspection performed -> Grade F, Trust 12, Balance 50 (not an inspection)
+- Repair-pricing estimate, repair-amendment, or report padded with minor/cosmetic line items dressed up as an inspection -> Grade F, Trust 12, Balance 15 (buyer bias — exists to manufacture negotiating leverage)
+- Blank/template-only form, or a report that rubber-stamps the home with no real findings or system evaluation -> Grade F, Trust 15, Balance 84 (seller bias — misses everything a buyer needs to know)
+
+## BALANCE SCORE — DIRECTION IS MANDATORY (this drives the buyer/seller dial shown in the UI):
+- balanceScore MUST reflect the actual lean even when the grade is F or the document is not a genuine inspection. NEVER output a score near 50 for a biased, flawed, or invalid document. A score near 50 is reserved ONLY for a genuinely balanced, legitimate, thorough inspection.
+- BUYER-biased -> score LOW (roughly 10-30): report padded with minor/cosmetic/age-appropriate items, alarmist language, inflated cost estimates, OR a repair-pricing estimate / repair-amendment / buyer negotiation document. These exist to drive the price down.
+- SELLER-biased -> score HIGH (roughly 70-90): vague "no issues noted" with no evidence major systems were actually inspected, real problems downplayed or omitted, OR a blank/empty/template-only document. These hide what a buyer needs to know.
+- An F grade should almost always pair with a balanceScore well below 30 OR well above 70. An F that lands near 50 is self-contradictory and wrong — pick the direction that matches WHY it failed.
 
 Return ONLY this JSON — no markdown, no backticks, no line breaks inside strings:
 {
@@ -299,7 +306,7 @@ Return ONLY this JSON — no markdown, no backticks, no line breaks inside strin
 
 CRITICAL: No line breaks inside string values. Single paragraphs only.`;
 
-      const reportClean = (reportText||"").slice(0,6000).replace(/\n+/g," ").replace(/\r/g,"");
+      const reportClean = (reportText||"").slice(0,100000).replace(/\n+/g," ").replace(/\r/g,"");
 
       // ── RESOLVE PROPERTY FACTS ────────────────────────────
       // Priority: (1) values passed in the request body, (2) live ATTOM lookup
