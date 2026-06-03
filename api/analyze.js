@@ -62,37 +62,46 @@ module.exports = async function handler(req, res) {
   }
 
   async function sbPost(path, body) {
-    if (!SB || !SK) return null;
+    if (!SB || !SK) { console.error("sbPost skipped: SUPABASE_URL or SUPABASE_SERVICE_KEY is missing"); return null; }
     try {
       const r = await fetch(`${SB}/rest/v1/${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=representation" },
         body: JSON.stringify(body),
       });
-      const d = await r.json();
+      const text = await r.text();
+      if (!r.ok) { console.error(`sbPost ${path} FAILED ${r.status}: ${text}`); return null; }
+      const d = text ? JSON.parse(text) : null;
       return Array.isArray(d) ? d[0] : d;
-    } catch { return null; }
+    } catch (e) { console.error(`sbPost ${path} threw: ${e.message}`); return null; }
   }
 
   async function sbPatch(path, body) {
-    if (!SB || !SK) return;
+    if (!SB || !SK) { console.error("sbPatch skipped: SUPABASE_URL or SUPABASE_SERVICE_KEY is missing"); return; }
     try {
-      await fetch(`${SB}/rest/v1/${path}`, {
+      const r = await fetch(`${SB}/rest/v1/${path}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "apikey": SK, "Authorization": `Bearer ${SK}` },
+        headers: { "Content-Type": "application/json", "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=representation" },
         body: JSON.stringify(body),
       });
-    } catch {}
+      const text = await r.text();
+      if (!r.ok) { console.error(`sbPatch ${path} FAILED ${r.status}: ${text}`); return; }
+      // With return=representation, a PATCH that matched nothing comes back as "[]".
+      if (text === "[]") console.error(`sbPatch ${path} matched 0 rows — nothing was updated. Does the target row exist?`);
+    } catch (e) { console.error(`sbPatch ${path} threw: ${e.message}`); }
   }
 
   async function sbGet(path) {
-    if (!SB || !SK) return [];
+    if (!SB || !SK) { console.error("sbGet skipped: SUPABASE_URL or SUPABASE_SERVICE_KEY is missing"); return []; }
     try {
       const r = await fetch(`${SB}/rest/v1/${path}`, {
         headers: { "apikey": SK, "Authorization": `Bearer ${SK}` },
       });
-      return await r.json();
-    } catch { return []; }
+      const text = await r.text();
+      if (!r.ok) { console.error(`sbGet ${path} FAILED ${r.status}: ${text}`); return []; }
+      const d = text ? JSON.parse(text) : [];
+      return Array.isArray(d) ? d : [];
+    } catch (e) { console.error(`sbGet ${path} threw: ${e.message}`); return []; }
   }
 
   try {
