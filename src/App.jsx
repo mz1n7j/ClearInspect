@@ -86,11 +86,11 @@ function Field({label:l,value,onChange,placeholder,missing,onClearMissing,type="
   );
 }
 
-function AuthModal({onClose,onAuth}) {
+function AuthModal({onClose,onAuth,initialMode,initialRole}) {
   const RETURNING_KEY="it_returning", EMAIL_KEY="it_last_email";
   // First-time visitors land on Create Account; returning visitors on Sign In.
-  const [tab,setTab]=useState(()=>{try{return localStorage.getItem(RETURNING_KEY)?"signin":"signup";}catch{return "signin";}});
-  const [form,setForm]=useState({email:"",password:"",name:"",role:"buyer",licenseNumber:"",interval:""});
+  const [tab,setTab]=useState(()=>{if(initialMode)return initialMode;try{return localStorage.getItem(RETURNING_KEY)?"signin":"signup";}catch{return "signin";}});
+  const [form,setForm]=useState({email:"",password:"",name:"",role:initialRole||"buyer",licenseNumber:"",interval:""});
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [remember,setRemember]=useState(false);
@@ -687,6 +687,7 @@ export default function App() {
   const [toast,setToast]=useState(null);
   const [dragOver,setDragOver]=useState(false);
   const [showAuth,setShowAuth]=useState(false);
+  const [authIntent,setAuthIntent]=useState(null);
   const [session,setSession]=useState(null);
   const [mobileMenu,setMobileMenu]=useState(false);
   const [sharedToken,setSharedToken]=useState(null);
@@ -1054,7 +1055,7 @@ export default function App() {
       `}</style>
 
       {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:9999,background:C.surface,border:`1px solid ${toast.type==="error"?C.red:C.gold}`,color:toast.type==="error"?C.red:C.gold,padding:"12px 18px",borderRadius:8,fontSize:12,fontFamily:"monospace",maxWidth:320,animation:"fadeIn 0.3s ease",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>{toast.msg}</div>}
-      {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={onAuth}/>}
+      {showAuth&&<AuthModal onClose={()=>{setShowAuth(false);setAuthIntent(null);}} onAuth={onAuth} initialMode={authIntent?.mode} initialRole={authIntent?.role}/>}
 
       {/* HEADER */}
       <header style={{position:"sticky",top:0,zIndex:100,background:"rgba(14,14,14,0.96)",borderBottom:`1px solid ${C.border}`,backdropFilter:"blur(10px)"}}>
@@ -1402,13 +1403,13 @@ export default function App() {
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
           <div><h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Directory</h2><p style={{color:C.dim,fontSize:14}}>Find verified, rated inspectors in your area.</p></div>
-          <button style={bGold}>Register as Inspector — $5/mo or $50/yr →</button>
+          <button style={bGold} onClick={()=>session?navTo("upload"):(setAuthIntent({mode:"signup",role:"inspector"}),setShowAuth(true))}>Register as Inspector — $5/mo or $50/yr →</button>
         </div>
         <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
           <div style={{fontSize:48,marginBottom:14}}>🔍</div>
           <p style={{color:C.dim,marginBottom:6}}>No verified inspectors listed yet.</p>
           <p style={{color:"#444",fontSize:13}}>Be the first to register.</p>
-          <button style={{...bGold,marginTop:18}}>Register Now →</button>
+          <button style={{...bGold,marginTop:18}} onClick={()=>session?navTo("upload"):(setAuthIntent({mode:"signup",role:"inspector"}),setShowAuth(true))}>Register Now →</button>
         </div>
       </main>}
 
