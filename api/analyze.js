@@ -452,7 +452,30 @@ ${reportClean}`,
         updateInspectorScores(licenseNo, SB, SK).catch(console.error);
       }
 
-      return res.status(200).json({ analysis, reportId, saved: !!reportId, propertyData });
+      // ── Notify parties: actually email the AI-written summaries via Resend ──
+      const notified = [];
+      const partyTargets = [
+        { type: "buyer",   to: buyerEmail,   body: analysis.emailBuyer },
+        { type: "seller",  to: sellerEmail,  body: analysis.emailSeller },
+        { type: "realtor", to: realtorEmail, body: analysis.emailRealtor },
+      ];
+      for (const p of partyTargets) {
+        const to = (p.to || "").trim();
+        if (!to) continue;
+        const ok = await sendPartyEmail({ to, propertyAddress, inspectorName, role: p.type, body: p.body });
+        if (ok) {
+          notified.push(p.type);
+          if (reportId) sbPost("email_sends", {
+            report_id: reportId,
+            recipient_type: p.type,
+            recipient_email: to,
+            sent_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 5*365*24*60*60*1000).toISOString(),
+          }).catch(()=>{});
+        }
+      }
+
+      return res.status(200).json({ analysis: { ...analysis, buyerEmail: buyerEmail||"", sellerEmail: sellerEmail||"", realtorEmail: realtorEmail||"" }, reportId, saved: !!reportId, propertyData, notified });
     }
 
     // ── RESEND EMAIL MODE ─────────────────────────────────────
@@ -480,6 +503,42 @@ ${reportClean}`,
       });
 
       return res.status(200).json({ success: true, message: `Email logged for ${recipientEmail}` });
+    }
+
+    // ── SEND PARTY EMAILS (real resend to a report's saved addresses) ──
+    if (mode === "send_party_emails") {
+      const token = (req.headers.authorization||"").replace("Bearer ","");
+      if (!token) return res.status(401).json({ error: "Login required." });
+      const { reportId: rid } = req.body;
+      if (!rid) return res.status(400).json({ error: "Report ID required." });
+
+      const reports = await sbGet(`inspection_reports?id=eq.${rid}&select=*`);
+      const report = reports[0];
+      if (!report) return res.status(404).json({ error: "Report not found." });
+
+      const a = report.analysis_data || {};
+      const targets = [
+        { type: "buyer",   to: report.buyer_email,   body: a.emailBuyer },
+        { type: "seller",  to: report.seller_email,  body: a.emailSeller },
+        { type: "realtor", to: report.realtor_email, body: a.emailRealtor },
+      ];
+      const notified = [];
+      for (const p of targets) {
+        const to = (p.to || "").trim();
+        if (!to) continue;
+        const ok = await sendPartyEmail({ to, propertyAddress: report.property_address || "", inspectorName: report.inspector_name || "", role: p.type, body: p.body });
+        if (ok) {
+          notified.push(p.type);
+          await sbPost("email_sends", {
+            report_id: rid,
+            recipient_type: p.type,
+            recipient_email: to,
+            sent_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 5*365*24*60*60*1000).toISOString(),
+          }).catch(()=>{});
+        }
+      }
+      return res.status(200).json({ success: true, notified });
     }
 
     // ── GET REPORTS DASHBOARD ─────────────────────────────────
@@ -611,6 +670,40 @@ ${reportClean}`,
     return res.status(500).json({ error: "Server error: " + err.message });
   }
 };
+
+// Send one AI-written party summary email via Resend. Returns true on success.
+async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body }) {
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  const EMAIL_FROM = process.env.EMAIL_FROM;
+  if (!RESEND_API_KEY || !EMAIL_FROM) {
+    console.error("sendPartyEmail skipped: RESEND_API_KEY or EMAIL_FROM is missing");
+    return false;
+  }
+  const roleLabel = String(role || "").charAt(0).toUpperCase() + String(role || "").slice(1);
+  const subject = `Inspection analysis${propertyAddress ? ` — ${propertyAddress}` : ""}`;
+  const safeBody = String(body || "Please review the inspection analysis.")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_API_KEY}` },
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to,
+        subject,
+        html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;">
+          <h2 style="color:#1a1a1a;">Inspection Analysis Summary</h2>
+          <p style="color:#444;font-size:13px;">Prepared for the ${roleLabel}${propertyAddress ? ` &middot; ${propertyAddress}` : ""}${inspectorName ? ` &middot; Inspector: ${inspectorName}` : ""}</p>
+          <div style="font-size:15px;line-height:1.7;color:#222;margin:18px 0;">${safeBody}</div>
+          <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
+          <p style="color:#888;font-size:12px;">Generated by InspectorTrust, which scores inspection reports for balance and accuracy.</p>
+        </div>`,
+      }),
+    });
+    if (!r.ok) { console.error(`Resend send to ${to} FAILED ${r.status}: ${await r.text()}`); return false; }
+    return true;
+  } catch (e) { console.error(`Resend send to ${to} threw: ${e.message}`); return false; }
+}
 
 async function updateInspectorScores(licenseNo, SB, SK) {
   const r = await fetch(`${SB}/rest/v1/inspection_reports?license_no=eq.${encodeURIComponent(licenseNo)}&status=eq.complete&select=trust_score,balance_score,completeness_score,technical_score,objectivity_score,inspector_grade,analysis_data`, {
