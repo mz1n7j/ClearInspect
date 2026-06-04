@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
   // FIX: yearBuilt, homeAge, propertyType, and sqft are now destructured from
   // req.body. They were referenced in the analyze block below but never declared,
   // which threw "ReferenceError: yearBuilt is not defined" and 500'd the request.
-  const { mode, reportText, inspectorName, companyName, licenseNo, propertyAddress, yearBuilt, homeAge, propertyType, sqft } = req.body;
+  const { mode, reportText, inspectorName, companyName, licenseNo, propertyAddress, yearBuilt, homeAge, propertyType, sqft, buyerEmail, sellerEmail, realtorEmail, photos } = req.body;
 
   async function claude(system, user, tokens, sonnet) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -187,6 +187,10 @@ Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"",
         license_no: licenseNo||null,
         property_address: propertyAddress||null,
         submitted_by: userId,
+        buyer_email: buyerEmail||null,
+        seller_email: sellerEmail||null,
+        realtor_email: realtorEmail||null,
+        report_photos: Array.isArray(photos) ? photos : [],
         status: "analyzing",
         report_year: year,
         report_text_excerpt: (reportText||"").slice(0,500),
@@ -516,7 +520,7 @@ ${reportClean}`,
       }
 
       // Admin may flag any report; a realtor may flag only reports they submitted.
-      const enriched = filtered.map(r => ({
+      const enriched = filtered.map(({ report_photos, ...r }) => ({
         ...r,
         can_flag: viewerRole === "admin" || (viewerRole === "realtor" && !!viewerId && r.submitted_by === viewerId),
       }));
