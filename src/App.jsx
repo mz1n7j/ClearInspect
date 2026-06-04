@@ -932,9 +932,11 @@ export default function App() {
 
   const sendEmails=async()=>{setEmailSending(true);await new Promise(r=>setTimeout(r,1800));setEmailSending(false);setEmailSent(true);showToast("Email summaries dispatched.");};
   const viewReport=r=>{setAnalysisResult(r);setEmailSent(false);setView("report");};
+  const onTemplateAnalyzed=(nr)=>{setReports(r=>[nr,...r]);setAnalysisResult(nr);setEmailSent(false);setView("report");if(nr.savedToDb&&session?.token)setTimeout(()=>loadRegistryReports(session.token),2000);};
 
   const navLinks=[
     ["upload","Upload"],
+    ["template","Template"],
     ["database",`Registry (${reports.length})`],
     ["reports","Reports"],
     ["directory","Find Inspectors"],
@@ -1293,6 +1295,8 @@ export default function App() {
       </main>}
 
       {/* RANKINGS */}
+      {view==="template"&&(session?<main style={{maxWidth:860,margin:"0 auto",padding:"24px 16px 80px"}}><InspectionTemplateView session={session} showToast={showToast} onAnalyzed={onTemplateAnalyzed}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to use the inspection template.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
+
       {view==="rankings"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><YearlyRankings session={session}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to view inspector rankings.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
 
       {/* ACCOUNT */}
@@ -1415,6 +1419,265 @@ function EmailPartyButton({reportId,partyLabel,defaultEmail,inspectorName,proper
         </div>
       )}
     </>
+  );
+}
+
+// ── INSPECTION TEMPLATE (Supabase-backed · photos · analyze) ──
+const TPL_WEIGHTS = {
+  Heavy:{c:C.red,blurb:"Major system / safety. Drives the report and the deal."},
+  Moderate:{c:C.gold,blurb:"Important, but rarely deal-breaking alone."},
+  Low:{c:C.green,blurb:"Minor / cosmetic / age-appropriate. Note, don't inflate."},
+};
+const TPL_CONDITIONS=["Acceptable","Marginal","Deficient","Not Present","Not Inspected"];
+const TPL_CONDCOLOR={Acceptable:C.green,Marginal:"#d8a13a",Deficient:C.red,"Not Present":C.dim,"Not Inspected":C.dim};
+const tplId=()=>Math.random().toString(36).slice(2,9);
+const tmk=(label,weight,critical=false)=>({id:tplId(),label,weight,critical});
+const TPL_STANDARD=[
+  ["Grounds & Site",[tmk("Grading slopes away from the foundation","Heavy",true),tmk("Exterior stairs, railings & handrails","Heavy",true),tmk("Retaining walls","Moderate"),tmk("Driveway & walkways","Low"),tmk("Vegetation in contact with the structure","Low")]],
+  ["Roof",[tmk("Roof covering — condition & remaining life","Heavy",true),tmk("Flashing & penetrations","Moderate"),tmk("Gutters & downspouts discharge away from foundation","Moderate"),tmk("Chimney exterior, crown & cap","Moderate"),tmk("Skylights","Low")]],
+  ["Exterior / Envelope",[tmk("Foundation — visible cracks / movement","Heavy",true),tmk("Decks, porches, balconies — ledger, attachment, railings","Heavy",true),tmk("Wall cladding / siding / trim","Moderate"),tmk("Exterior doors & windows — seals & operation","Moderate"),tmk("Soffits, fascia, eaves","Low"),tmk("Caulking & weather sealing","Low")]],
+  ["Structure",[tmk("Foundation / slab / basement / crawlspace","Heavy",true),tmk("Roof framing / trusses — gusset plates, modifications","Heavy",true),tmk("Moisture / wood rot / pest damage in structure","Heavy",true),tmk("Floor framing & subfloor","Heavy"),tmk("Wall framing","Heavy"),tmk("Signs of settlement / movement","Heavy")]],
+  ["Electrical",[tmk("Service entrance & capacity (amps)","Heavy",true),tmk("Main panel & breakers — double-taps, labeling, condition","Heavy",true),tmk("Branch wiring — type, condition, no exposed splices","Heavy",true),tmk("GFCI protection (kitchen / bath / exterior / garage)","Heavy",true),tmk("Smoke alarms — present & functional","Heavy",true),tmk("Carbon monoxide alarms — present & functional","Heavy",true),tmk("Grounding & bonding","Heavy"),tmk("Subpanels","Heavy"),tmk("AFCI protection","Moderate"),tmk("Outlets, switches & fixtures (representative sample)","Moderate")]],
+  ["Plumbing",[tmk("Water supply lines — material, condition, pressure","Heavy",true),tmk("Drain, waste & vent system","Heavy",true),tmk("Water heater — age, condition, capacity","Heavy",true),tmk("Water heater TPR valve & discharge piping","Heavy",true),tmk("Gas supply lines & shutoffs","Heavy",true),tmk("Fixtures, faucets & drains — leaks & function","Moderate"),tmk("Functional flow & drainage","Moderate"),tmk("Sump pump","Moderate"),tmk("Well / septic indicators (if applicable)","Moderate")]],
+  ["HVAC",[tmk("Heating system — type, age, operation","Heavy",true),tmk("Cooling system — type, age, operation","Heavy",true),tmk("Heat exchanger / combustion / flue venting (CO risk)","Heavy",true),tmk("Ductwork — condition, leaks, insulation","Moderate"),tmk("Thermostat & controls","Low"),tmk("Filters","Low"),tmk("Refrigerant line condition","Low")]],
+  ["Interior",[tmk("Active leaks / moisture / suspected mold","Heavy",true),tmk("Interior stairs, railings & guardrails","Heavy",true),tmk("Garage — firewall / fire separation","Heavy",true),tmk("Garage door — auto-reverse & photo-eye safety","Heavy",true),tmk("Walls & ceilings — cracks, stains","Moderate"),tmk("Windows & doors — operation, glazing","Moderate"),tmk("Floors — condition & slope","Moderate")]],
+  ["Insulation & Ventilation",[tmk("Dryer vent — material & termination (fire risk)","Moderate"),tmk("Attic insulation — type & depth / R-value","Moderate"),tmk("Attic ventilation","Moderate"),tmk("Bathroom / kitchen exhaust vents to exterior","Low"),tmk("Vapor barriers","Low")]],
+  ["Fireplace & Chimney",[tmk("Flue / liner","Heavy",true),tmk("Firebox & damper","Moderate"),tmk("Gas fireplace operation & venting","Moderate"),tmk("Hearth extension & clearances","Moderate")]],
+  ["Built-in Appliances",[tmk("Range / cooktop / oven","Moderate"),tmk("Range hood / exhaust","Low"),tmk("Dishwasher","Low"),tmk("Garbage disposal","Low"),tmk("Built-in microwave","Low")]],
+];
+const buildTplStandard=()=>TPL_STANDARD.map(([title,items])=>({id:tplId(),title,items:items.map(i=>({...i,id:tplId()}))}));
+
+function downscaleImage(file,maxDim=1600,quality=0.7){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();const url=URL.createObjectURL(file);
+    img.onload=()=>{URL.revokeObjectURL(url);let w=img.width,h=img.height;
+      if(w>maxDim||h>maxDim){const s=maxDim/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}
+      const cv=document.createElement("canvas");cv.width=w;cv.height=h;cv.getContext("2d").drawImage(img,0,0,w,h);
+      resolve(cv.toDataURL("image/jpeg",quality));};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Could not read image"));};
+    img.src=url;
+  });
+}
+
+function InspectionTemplateView({session,showToast,onAnalyzed}){
+  const [sections,setSections]=useState(buildTplStandard);
+  const [basic,setBasic]=useState({inspectorName:"",license:"",company:"",date:new Date().toISOString().slice(0,10),street:"",city:"",state:"",zip:"",client:"",yearBuilt:"",weather:""});
+  const [fills,setFills]=useState({});
+  const [editMode,setEditMode]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [analyzing,setAnalyzing]=useState(false);
+  const [uploadingId,setUploadingId]=useState(null);
+
+  useEffect(()=>{(async()=>{
+    try{
+      const res=await fetch("/api/template",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({action:"get"})});
+      const data=await res.json();
+      if(res.ok&&data.template){
+        if(Array.isArray(data.template.sections))setSections(data.template.sections);
+        if(data.template.identity)setBasic(b=>({...b,...data.template.identity}));
+      }
+    }catch(e){/* fall back to standard */}
+    finally{setLoading(false);}
+  })();},[]);
+
+  const setBf=(k,v)=>setBasic(b=>({...b,[k]:v}));
+  const setFill=(id,patch)=>setFills(f=>({...f,[id]:{condition:"",notes:"",photos:[],...f[id],...patch}}));
+
+  const saveTemplate=async()=>{
+    setSaving(true);
+    try{
+      const identity={inspectorName:basic.inspectorName,license:basic.license,company:basic.company};
+      const res=await fetch("/api/template",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({action:"save",template:{sections,identity}})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Save failed");
+      showToast("Saved — this is now your template for every inspection ✓");
+    }catch(e){showToast(e.message,"error");}
+    finally{setSaving(false);}
+  };
+  const resetStandard=()=>{if(!window.confirm("Reset to the recommended standard template? Custom items will be removed."))return;setSections(buildTplStandard());setFills({});showToast("Reset to the standard template.");};
+
+  const addPhotos=async(id,fileList)=>{
+    const files=Array.from(fileList||[]);if(!files.length)return;
+    setUploadingId(id);
+    try{
+      for(const file of files){
+        const dataUrl=await downscaleImage(file);
+        const res=await fetch("/api/template",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({action:"upload_photo",dataUrl})});
+        const data=await res.json();
+        if(!res.ok)throw new Error(data.error||"Upload failed");
+        setFills(f=>{const cur=f[id]||{condition:"",notes:"",photos:[]};return {...f,[id]:{...cur,photos:[...(cur.photos||[]),data.url]}};});
+      }
+    }catch(e){showToast("Photo: "+e.message,"error");}
+    finally{setUploadingId(null);}
+  };
+  const removePhoto=(id,idx)=>setFills(f=>{const cur=f[id];if(!cur)return f;return {...f,[id]:{...cur,photos:cur.photos.filter((_,i)=>i!==idx)}};});
+
+  const addItem=(sid)=>setSections(s=>s.map(sec=>sec.id===sid?{...sec,items:[...sec.items,{id:tplId(),label:"New item",weight:"Moderate",critical:false,custom:true}]}:sec));
+  const updateItem=(sid,iid,patch)=>setSections(s=>s.map(sec=>sec.id===sid?{...sec,items:sec.items.map(it=>it.id===iid?{...it,...patch}:it)}:sec));
+  const removeItem=(sid,iid)=>setSections(s=>s.map(sec=>sec.id===sid?{...sec,items:sec.items.filter(it=>it.id!==iid)}:sec));
+  const addSection=()=>setSections(s=>[...s,{id:tplId(),title:"New Section",items:[],custom:true}]);
+  const updateSection=(sid,t)=>setSections(s=>s.map(sec=>sec.id===sid?{...sec,title:t}:sec));
+  const removeSection=(sid)=>{if(window.confirm("Delete this entire section?"))setSections(s=>s.filter(sec=>sec.id!==sid));};
+
+  const allItems=sections.flatMap(s=>s.items);
+  const completed=allItems.filter(i=>fills[i.id]?.condition).length;
+  const defs=allItems.filter(i=>fills[i.id]?.condition==="Deficient");
+  const heavyDef=defs.filter(i=>i.weight==="Heavy").length;
+  const modDef=defs.filter(i=>i.weight==="Moderate").length;
+  const lowDef=defs.filter(i=>i.weight==="Low").length;
+
+  const serialize=()=>{
+    const addr=[basic.street,basic.city,basic.state,basic.zip].filter(Boolean).join(", ");
+    let out=`HOME INSPECTION REPORT (completed checklist via InspectorTrust template)\n`;
+    out+=`Inspector: ${basic.inspectorName||"Unknown"} | License: ${basic.license||"N/A"} | Company: ${basic.company||"N/A"}\n`;
+    out+=`Property: ${addr||"N/A"} | Date: ${basic.date||"N/A"} | Year Built: ${basic.yearBuilt||"Unknown"} | Weather: ${basic.weather||"N/A"}\nClient: ${basic.client||"N/A"}\n\n`;
+    for(const sec of sections){
+      if(!sec.items.some(it=>fills[it.id]?.condition))continue;
+      out+=`== ${sec.title} ==\n`;
+      for(const it of sec.items){
+        const f=fills[it.id];if(!f?.condition)continue;
+        out+=`[${it.weight.toUpperCase()}]${it.critical?"[CRITICAL]":""} ${it.label}: ${f.condition}\n`;
+        if(f.notes)out+=`   Notes: ${f.notes}\n`;
+        if(f.photos?.length)out+=`   (${f.photos.length} photo${f.photos.length>1?"s":""} attached)\n`;
+      }
+      out+="\n";
+    }
+    return out.trim();
+  };
+
+  const analyze=async()=>{
+    const addr=[basic.street,basic.city,basic.state,basic.zip].filter(Boolean).join(", ");
+    if(!basic.inspectorName||!basic.license||!basic.street){showToast("Inspector name, license, and property address are required.","error");return;}
+    if(completed===0){showToast("Record at least one item's condition before analyzing.","error");return;}
+    setAnalyzing(true);
+    try{
+      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({mode:"analyze",inspectorName:basic.inspectorName,companyName:basic.company,licenseNo:basic.license,propertyAddress:addr,reportText:serialize(),yearBuilt:basic.yearBuilt||null,homeAge:basic.yearBuilt?(new Date().getFullYear()-Number(basic.yearBuilt)):null,propertyType:null,sqft:null})});
+      const data=await res.json();
+      if(res.status===401){showToast("Session expired — sign in again.","error");return;}
+      if(!res.ok)throw new Error(data.error||"Analysis failed");
+      const nr={id:data.reportId||tplId(),inspectorName:basic.inspectorName,companyName:basic.company,licenseNo:basic.license,propertyAddress:addr,buyerEmail:"",sellerEmail:"",realtorEmail:"",analysis:data.analysis,savedToDb:data.saved,date:fmt(new Date())};
+      if(onAnalyzed)onAnalyzed(nr);
+    }catch(e){showToast("Analysis failed: "+e.message,"error");}
+    finally{setAnalyzing(false);}
+  };
+
+  const WeightTag=({w})=><span style={{...tag(TPL_WEIGHTS[w].c),fontSize:9.5,fontFamily:"monospace",fontWeight:700,letterSpacing:"0.06em",padding:"2px 6px"}}>{w.toUpperCase()}</span>;
+
+  if(loading)return <div style={{textAlign:"center",padding:"60px 0"}}><Spinner lg/><p style={{color:C.dim,marginTop:14,fontSize:14}}>Loading your template…</p></div>;
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap",marginBottom:14}}>
+        <div>
+          <h1 style={{fontSize:26,fontWeight:800,color:"#fff",marginBottom:4}}>Inspection Template</h1>
+          <p style={{color:C.dim,fontSize:13}}>Recommended standard · weighted · personalize and reuse on every inspection.</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button style={{...bGhost,...(editMode?{borderColor:C.gold,color:C.gold}:{})}} onClick={()=>setEditMode(e=>!e)}>{editMode?"Done editing":"Edit template"}</button>
+          <button style={bGhost} onClick={resetStandard}>↻ Reset</button>
+          <button style={bGhost} disabled={saving} onClick={saveTemplate}>{saving?<><Spinner/> Saving…</>:"💾 Save my template"}</button>
+        </div>
+      </div>
+
+      <div style={{...cardSm,display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
+        {Object.keys(TPL_WEIGHTS).map(w=>(
+          <div key={w} style={{display:"flex",alignItems:"center",gap:7,minWidth:230,flex:1}}>
+            <WeightTag w={w}/><span style={{fontSize:11,color:C.dim}}>{TPL_WEIGHTS[w].blurb}</span>
+          </div>
+        ))}
+        <div style={{fontSize:11,color:C.dim}}>★ = critical item every inspector should check</div>
+      </div>
+
+      <div style={{...card,marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.gold,fontFamily:"monospace",letterSpacing:"0.05em",marginBottom:12}}>BASIC INFORMATION</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>
+          <div><label style={lbl}>Inspector Name <span style={{color:C.red}}>*</span></label><input style={{...inp,...(basic.inspectorName?{}:{borderColor:"#e74c3c66"})}} value={basic.inspectorName} onChange={e=>setBf("inspectorName",e.target.value)} placeholder="Jane Inspector"/></div>
+          <div><label style={lbl}>License # <span style={{color:C.red}}>*</span></label><input style={{...inp,...(basic.license?{}:{borderColor:"#e74c3c66"})}} value={basic.license} onChange={e=>setBf("license",e.target.value)} placeholder="TREC 12345"/></div>
+          <div><label style={lbl}>Company</label><input style={inp} value={basic.company} onChange={e=>setBf("company",e.target.value)} placeholder="Acme Home Inspections"/></div>
+          <div><label style={lbl}>Inspection Date</label><input type="date" style={inp} value={basic.date} onChange={e=>setBf("date",e.target.value)}/></div>
+          <div><label style={lbl}>Street <span style={{color:C.red}}>*</span></label><input style={{...inp,...(basic.street?{}:{borderColor:"#e74c3c66"})}} value={basic.street} onChange={e=>setBf("street",e.target.value)} placeholder="123 Main St"/></div>
+          <div><label style={lbl}>City</label><input style={inp} value={basic.city} onChange={e=>setBf("city",e.target.value)} placeholder="Austin"/></div>
+          <div><label style={lbl}>State</label><input style={inp} value={basic.state} onChange={e=>setBf("state",e.target.value)} placeholder="TX"/></div>
+          <div><label style={lbl}>ZIP</label><input style={inp} value={basic.zip} onChange={e=>setBf("zip",e.target.value)} placeholder="78701"/></div>
+          <div><label style={lbl}>Client</label><input style={inp} value={basic.client} onChange={e=>setBf("client",e.target.value)} placeholder="Buyer name"/></div>
+          <div><label style={lbl}>Year Built</label><input style={inp} value={basic.yearBuilt} onChange={e=>setBf("yearBuilt",e.target.value)} placeholder="2014"/></div>
+          <div><label style={lbl}>Weather / Conditions</label><input style={inp} value={basic.weather} onChange={e=>setBf("weather",e.target.value)} placeholder="Clear, 72°F, dry"/></div>
+        </div>
+      </div>
+
+      <div style={{...cardSm,display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        {[[`${completed}/${allItems.length}`,"Items recorded",C.gold],[heavyDef,"Heavy deficiencies",C.red],[modDef,"Moderate deficiencies",C.gold],[lowDef,"Low deficiencies",C.green]].map(([n,l,c])=>(
+          <div key={l} style={{flex:1,minWidth:110,textAlign:"center",padding:"8px 6px",background:"#0a0a0a",borderRadius:8,border:`1px solid #242424`}}>
+            <div style={{fontSize:22,fontWeight:800,color:c,fontFamily:"monospace"}}>{n}</div>
+            <div style={{fontSize:10,color:C.dim}}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {sections.map(sec=>(
+        <div key={sec.id} style={{...card,marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+            {editMode
+              ? <input value={sec.title} onChange={e=>updateSection(sec.id,e.target.value)} style={{...inp,fontWeight:700,fontSize:15,flex:1}}/>
+              : <div style={{fontSize:15,fontWeight:800,flex:1,color:"#fff"}}>{sec.title}</div>}
+            {editMode&&<button style={{...bGhost,borderColor:`${C.red}55`,color:C.red,padding:"6px 9px"}} onClick={()=>removeSection(sec.id)}>🗑</button>}
+          </div>
+          {sec.items.map(item=>{
+            const f=fills[item.id]||{};
+            return (
+              <div key={item.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.surface2}`}}>
+                {editMode?(
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                    <input value={item.label} onChange={e=>updateItem(sec.id,item.id,{label:e.target.value})} style={{...inp,flex:1,minWidth:180}}/>
+                    <select value={item.weight} onChange={e=>updateItem(sec.id,item.id,{weight:e.target.value})} style={{...inp,width:"auto",color:TPL_WEIGHTS[item.weight].c,fontWeight:700}}>
+                      {Object.keys(TPL_WEIGHTS).map(w=><option key={w} value={w}>{w}</option>)}
+                    </select>
+                    <button title="Toggle critical" style={{...bGhost,padding:"8px 10px",borderColor:item.critical?C.gold:C.border,color:item.critical?C.gold:C.faint}} onClick={()=>updateItem(sec.id,item.id,{critical:!item.critical})}>★</button>
+                    <button style={{...bGhost,padding:"8px 10px",borderColor:`${C.red}55`,color:C.red}} onClick={()=>removeItem(sec.id,item.id)}>🗑</button>
+                  </div>
+                ):(
+                  <>
+                    <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:8}}>
+                      {item.critical&&<span style={{color:C.gold}}>★</span>}
+                      <span style={{fontSize:14,fontWeight:500}}>{item.label}</span>
+                      <WeightTag w={item.weight}/>
+                      {item.custom&&<span style={{fontSize:9,color:C.faint,fontFamily:"monospace"}}>CUSTOM</span>}
+                    </div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                      {TPL_CONDITIONS.map(cond=>{const active=f.condition===cond;return (
+                        <button key={cond} onClick={()=>setFill(item.id,{condition:active?"":cond})} style={{fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",borderRadius:6,padding:"5px 10px",border:`1px solid ${active?TPL_CONDCOLOR[cond]:C.border}`,background:active?`${TPL_CONDCOLOR[cond]}1f`:"transparent",color:active?TPL_CONDCOLOR[cond]:C.dim}}>{cond}</button>
+                      );})}
+                    </div>
+                    <textarea value={f.notes||""} onChange={e=>setFill(item.id,{notes:e.target.value})} placeholder="Observations, location, recommendation…" rows={f.notes?2:1} style={{...inp,resize:"vertical",marginBottom:8}}/>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                      <label style={{...bGhost,cursor:uploadingId===item.id?"wait":"pointer",color:C.gold,borderColor:`${C.gold}55`,fontSize:12,padding:"6px 12px"}}>
+                        {uploadingId===item.id?<><Spinner/> Uploading…</>:"📷 Add photo"}
+                        <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} disabled={uploadingId===item.id} onChange={e=>{addPhotos(item.id,e.target.files);e.target.value="";}}/>
+                      </label>
+                      {(f.photos||[]).map((src,i)=>(
+                        <div key={i} style={{position:"relative"}}>
+                          <img src={src} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                          <button onClick={()=>removePhoto(item.id,i)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:C.red,color:"#fff",border:"none",fontSize:11,cursor:"pointer",lineHeight:1}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {editMode&&<button style={{...bGhost,marginTop:10,color:C.gold,borderColor:`${C.gold}55`}} onClick={()=>addItem(sec.id)}>+ Add item to {sec.title||"section"}</button>}
+        </div>
+      ))}
+
+      {editMode&&<button style={{...bGold,width:"100%",justifyContent:"center",marginBottom:14}} onClick={addSection}>+ Add a custom section</button>}
+
+      <div style={{position:"sticky",bottom:0,background:`${C.base}f2`,backdropFilter:"blur(8px)",borderTop:`1px solid ${C.border}`,padding:"12px 0",display:"flex",gap:12,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:C.dim}}>{completed} of {allItems.length} items recorded{heavyDef>0?` · ${heavyDef} heavy deficienc${heavyDef===1?"y":"ies"}`:""}</span>
+        <button style={{...bGold,opacity:analyzing?0.7:1}} disabled={analyzing} onClick={analyze}>{analyzing?<><Spinner/> Analyzing…</>:"Analyze this inspection →"}</button>
+      </div>
+    </div>
   );
 }
 
