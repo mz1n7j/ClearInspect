@@ -462,7 +462,7 @@ ${reportClean}`,
       for (const p of partyTargets) {
         const to = (p.to || "").trim();
         if (!to) continue;
-        const ok = await sendPartyEmail({ to, propertyAddress, inspectorName, role: p.type, body: p.body });
+        const ok = await sendPartyEmail({ to, propertyAddress, inspectorName, role: p.type, body: p.body, analysis });
         if (ok) {
           notified.push(p.type);
           if (reportId) sbPost("email_sends", {
@@ -526,7 +526,7 @@ ${reportClean}`,
       for (const p of targets) {
         const to = (p.to || "").trim();
         if (!to) continue;
-        const ok = await sendPartyEmail({ to, propertyAddress: report.property_address || "", inspectorName: report.inspector_name || "", role: p.type, body: p.body });
+        const ok = await sendPartyEmail({ to, propertyAddress: report.property_address || "", inspectorName: report.inspector_name || "", role: p.type, body: p.body, analysis: a });
         if (ok) {
           notified.push(p.type);
           await sbPost("email_sends", {
@@ -672,17 +672,27 @@ ${reportClean}`,
 };
 
 // Send one AI-written party summary email via Resend. Returns true on success.
-async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body }) {
+async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body, analysis }) {
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   const EMAIL_FROM = process.env.EMAIL_FROM;
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.error("sendPartyEmail skipped: RESEND_API_KEY or EMAIL_FROM is missing");
     return false;
   }
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const nl2br = (s) => esc(s).replace(/\n/g, "<br>");
+  const a = analysis || {};
   const roleLabel = String(role || "").charAt(0).toUpperCase() + String(role || "").slice(1);
-  const subject = `Inspection analysis${propertyAddress ? ` — ${propertyAddress}` : ""}`;
-  const safeBody = String(body || "Please review the inspection analysis.")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+  const grade = a.inspectorGrade || "—";
+  const gradeColor = grade === "A" ? "#27ae60" : grade === "B" ? "#b8902f" : grade === "C" ? "#e67e22" : "#c0392b";
+  const trust = (a.trustScore === undefined || a.trustScore === null || a.trustScore === "") ? "—" : a.trustScore;
+  const balance = (a.balanceScore === undefined || a.balanceScore === null || a.balanceScore === "") ? "—" : a.balanceScore;
+  const strengths = Array.isArray(a.strengths) ? a.strengths.filter(Boolean) : [];
+  const concerns = Array.isArray(a.concerns) ? a.concerns.filter(Boolean) : [];
+  const recommendation = a.recommendation || "";
+  const subject = `Inspection analysis${propertyAddress ? ` — ${propertyAddress}` : ""} · Grade ${grade}`;
+  const list = (items) => `<ul style="margin:6px 0 0;padding-left:20px;color:#222;font-size:14px;line-height:1.6;">${items.map(i=>`<li style="margin-bottom:4px;">${esc(i)}</li>`).join("")}</ul>`;
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -691,12 +701,34 @@ async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body }
         from: EMAIL_FROM,
         to,
         subject,
-        html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;">
-          <h2 style="color:#1a1a1a;">Inspection Analysis Summary</h2>
-          <p style="color:#444;font-size:13px;">Prepared for the ${roleLabel}${propertyAddress ? ` &middot; ${propertyAddress}` : ""}${inspectorName ? ` &middot; Inspector: ${inspectorName}` : ""}</p>
-          <div style="font-size:15px;line-height:1.7;color:#222;margin:18px 0;">${safeBody}</div>
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;">
+          <h2 style="color:#1a1a1a;margin:0 0 4px;">Inspection Analysis Summary</h2>
+          <p style="color:#666;font-size:13px;margin:0 0 18px;">Prepared for the ${roleLabel}${propertyAddress ? ` &middot; ${esc(propertyAddress)}` : ""}${inspectorName ? ` &middot; Inspector: ${esc(inspectorName)}` : ""}</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #eee;border-radius:10px;margin-bottom:20px;">
+            <tr>
+              <td style="padding:16px;text-align:center;border-right:1px solid #eee;width:33%;">
+                <div style="font-size:32px;font-weight:800;color:${gradeColor};line-height:1;">${esc(grade)}</div>
+                <div style="font-size:11px;color:#888;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Grade</div>
+              </td>
+              <td style="padding:16px;text-align:center;border-right:1px solid #eee;width:33%;">
+                <div style="font-size:24px;font-weight:700;color:#1a1a1a;line-height:1;">${esc(trust)}</div>
+                <div style="font-size:11px;color:#888;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Trust Score</div>
+              </td>
+              <td style="padding:16px;text-align:center;width:33%;">
+                <div style="font-size:24px;font-weight:700;color:#1a1a1a;line-height:1;">${esc(balance)}</div>
+                <div style="font-size:11px;color:#888;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Balance</div>
+              </td>
+            </tr>
+          </table>
+          <div style="font-size:15px;line-height:1.7;color:#222;margin:0 0 20px;">${nl2br(body || "Please review the inspection analysis.")}</div>
+          ${strengths.length ? `<h3 style="font-size:13px;color:#27ae60;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Strengths</h3>${list(strengths)}` : ""}
+          ${concerns.length ? `<h3 style="font-size:13px;color:#c0392b;margin:18px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Concerns</h3>${list(concerns)}` : ""}
+          ${recommendation ? `<h3 style="font-size:13px;color:#1a1a1a;margin:18px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Recommendation</h3><p style="margin:6px 0 0;color:#222;font-size:14px;line-height:1.6;">${nl2br(recommendation)}</p>` : ""}
+          <div style="text-align:center;margin:28px 0 8px;">
+            <a href="${SITE_URL}" style="display:inline-block;background:#C8A84B;color:#0e0e0e;text-decoration:none;font-weight:700;font-size:15px;padding:12px 28px;border-radius:8px;">Sign in to view the full report &rarr;</a>
+          </div>
           <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
-          <p style="color:#888;font-size:12px;">Generated by InspectorTrust, which scores inspection reports for balance and accuracy.</p>
+          <p style="color:#888;font-size:12px;">Generated by InspectorTrust, which scores inspection reports for balance and accuracy. <a href="${SITE_URL}" style="color:#b8902f;">${esc(SITE_URL.replace(/^https?:\/\//,""))}</a></p>
         </div>`,
       }),
     });
