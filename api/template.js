@@ -18,8 +18,8 @@ module.exports = async function handler(req, res) {
   const token = (req.headers.authorization || "").replace("Bearer ", "");
   if (!token) return res.status(401).json({ error: "Login required." });
 
-  // Validate the session and resolve the user id.
-  let userId;
+  // Validate the session and resolve the user id + email.
+  let userId, userEmail;
   try {
     const userRes = await fetch(`${SB}/auth/v1/user`, {
       headers: { apikey: SK, Authorization: `Bearer ${token}` },
@@ -27,6 +27,7 @@ module.exports = async function handler(req, res) {
     const userData = await userRes.json();
     if (!userRes.ok || !userData?.id) return res.status(401).json({ error: "Session expired. Please sign back in." });
     userId = userData.id;
+    userEmail = (userData.email || "").toLowerCase();
   } catch (e) {
     console.error("template auth error:", e.message);
     return res.status(401).json({ error: "Could not verify session." });
@@ -85,8 +86,47 @@ module.exports = async function handler(req, res) {
         console.error(`photo upload FAILED ${up.status}: ${t}`);
         return res.status(500).json({ error: up.status === 404 ? `Storage bucket "${BUCKET}" not found — create it first.` : "Photo upload failed." });
       }
-      const publicUrl = `${SB}/storage/v1/object/public/${BUCKET}/${path}`;
-      return res.status(200).json({ url: publicUrl, path });
+      // Bucket is private — return a short-lived signed URL for immediate preview.
+      const signedUrl = await signStoragePath(SB, SK, BUCKET, path, 3600);
+      return res.status(200).json({ url: signedUrl, path });
+    }
+
+    // ── GET PHOTOS for a report (access-controlled, signed URLs) ─
+    // Allowed: admin, the realtor who loaded it (submitted_by), or the
+    // signed-in user whose email matches the report's buyer/seller/realtor.
+    if (action === "get_photos") {
+      const { reportId } = req.body;
+      if (!reportId) return res.status(400).json({ error: "Report ID required." });
+
+      let role = null;
+      try {
+        const pr = await fetch(`${SB}/rest/v1/profiles?id=eq.${userId}&select=role`, { headers: { apikey: SK, Authorization: `Bearer ${SK}` } });
+        if (pr.ok) { const pj = await pr.json(); role = pj[0]?.role || null; }
+      } catch (_) {}
+
+      const rr = await fetch(`${SB}/rest/v1/inspection_reports?id=eq.${reportId}&select=submitted_by,buyer_email,seller_email,realtor_email,report_photos`, { headers: { apikey: SK, Authorization: `Bearer ${SK}` } });
+      if (!rr.ok) { console.error(`get_photos report fetch FAILED ${rr.status}`); return res.status(500).json({ error: "Could not load report." }); }
+      const rows = await rr.json();
+      const report = Array.isArray(rows) ? rows[0] : null;
+      if (!report) return res.status(404).json({ error: "Report not found." });
+
+      const matches = (v) => v && String(v).toLowerCase() === userEmail;
+      const authorized =
+        role === "admin" ||
+        report.submitted_by === userId ||
+        matches(report.buyer_email) ||
+        matches(report.seller_email) ||
+        matches(report.realtor_email);
+      if (!authorized) return res.status(403).json({ error: "Photos are restricted to the agent and the buyer/seller on this report.", restricted: true });
+
+      const stored = Array.isArray(report.report_photos) ? report.report_photos : [];
+      const signed = [];
+      for (const p of stored) {
+        if (!p?.path) continue;
+        const url = await signStoragePath(SB, SK, BUCKET, p.path, 3600);
+        if (url) signed.push({ url, section: p.section || "", item: p.item || "", weight: p.weight || "", condition: p.condition || "" });
+      }
+      return res.status(200).json({ photos: signed });
     }
 
     return res.status(400).json({ error: "Unknown action." });
@@ -95,3 +135,19 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "Server error: " + err.message });
   }
 };
+
+// Generate a short-lived signed URL for a private-bucket object (or null).
+async function signStoragePath(SB, SK, bucket, path, expiresIn = 3600) {
+  try {
+    const r = await fetch(`${SB}/storage/v1/object/sign/${bucket}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SK, Authorization: `Bearer ${SK}` },
+      body: JSON.stringify({ expiresIn }),
+    });
+    if (!r.ok) { console.error(`sign FAILED ${r.status}: ${await r.text()}`); return null; }
+    const data = await r.json();
+    const signed = data.signedURL || data.signedUrl;
+    if (!signed) return null;
+    return signed.startsWith("http") ? signed : `${SB}/storage/v1${signed}`;
+  } catch (e) { console.error("sign error:", e.message); return null; }
+}
