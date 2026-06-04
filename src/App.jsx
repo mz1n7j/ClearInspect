@@ -87,11 +87,29 @@ function Field({label:l,value,onChange,placeholder,missing,onClearMissing,type="
 }
 
 function AuthModal({onClose,onAuth}) {
-  const [tab,setTab]=useState("signin");
+  const RETURNING_KEY="it_returning", EMAIL_KEY="it_last_email";
+  // First-time visitors land on Create Account; returning visitors on Sign In.
+  const [tab,setTab]=useState(()=>{try{return localStorage.getItem(RETURNING_KEY)?"signin":"signup";}catch{return "signin";}});
   const [form,setForm]=useState({email:"",password:"",name:"",role:"buyer",licenseNumber:"",interval:""});
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
+  const [remember,setRemember]=useState(false);
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
+
+  // Prefill the last-used email if the person asked us to remember it.
+  useEffect(()=>{
+    try{const e=localStorage.getItem(EMAIL_KEY);if(e){setForm(f=>({...f,email:e}));setRemember(true);}}catch{}
+  },[]);
+
+  // Persist "returning" flag + remembered email (never the password).
+  const persistPrefs=()=>{
+    try{
+      localStorage.setItem(RETURNING_KEY,"1");
+      if(remember&&form.email)localStorage.setItem(EMAIL_KEY,form.email);
+      else localStorage.removeItem(EMAIL_KEY);
+    }catch{}
+  };
+
   const submit=async()=>{
     setError("");setLoading(true);
     try {
@@ -100,11 +118,12 @@ function AuthModal({onClose,onAuth}) {
         const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"signin",email:form.email,password:form.password})});
         const data=await res.json();
         if(!res.ok){setError(data.error||"Invalid email or password.");setLoading(false);return;}
+        persistPrefs();
         saveSession({token:data.session?.access_token,profile:data.profile});
         onAuth(data.profile,data.session?.access_token);onClose();
         return;
       }
-      // Sign up — route through $1 Stripe payment first
+      // Sign up — route through Stripe subscription checkout first
       if(!form.email||!form.password){setError("Email and password are required.");setLoading(false);return;}
       if((form.role==="realtor"||form.role==="inspector")&&!form.licenseNumber){setError("Realtors and inspectors must provide a license number.");setLoading(false);return;}
       if((form.role==="realtor"||form.role==="inspector")&&!form.interval){setError("Choose a billing plan — monthly or yearly.");setLoading(false);return;}
@@ -122,23 +141,31 @@ function AuthModal({onClose,onAuth}) {
       });
       const data=await res.json();
       if(!res.ok||!data.url){setError(data.error||"Could not start checkout.");setLoading(false);return;}
+      persistPrefs();
       // Store password temporarily in sessionStorage for after payment
       sessionStorage.setItem("it_pending_signup",JSON.stringify({email:form.email,password:form.password,name:form.name,role:form.role,licenseNumber:form.licenseNumber}));
       window.location.href=data.url;
     } catch(e){setError("Network error: "+e.message);}
     finally{setLoading(false);}
   };
+
+  const toggleMode=()=>{setTab(tab==="signin"?"signup":"signin");setError("");};
+
   return (
-    <div style={mOv} onClick={onClose}>
-      <div style={mBox} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:20}}>
-          {["signin","signup"].map(t=><button key={t} onClick={()=>{setTab(t);setError("");}} style={tabB(tab===t)}>{t==="signin"?"Sign In":"Create Account"}</button>)}
-          <button onClick={onClose} style={{marginLeft:"auto",background:"none",border:"none",color:C.dim,fontSize:20,cursor:"pointer"}}>✕</button>
+    <div style={{...mOv,alignItems:"center",padding:16}} onClick={onClose}>
+      <div style={{...mBox,borderRadius:16,maxWidth:420,animation:"fadeIn 0.2s ease"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <h2 style={{fontSize:19,fontWeight:800,color:"#fff",letterSpacing:"-0.01em"}}>{tab==="signin"?"Welcome back":"Create your account"}</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.dim,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
         {error&&<div style={{padding:"10px 14px",borderRadius:8,fontSize:13,marginBottom:14,background:error.includes("created")?"rgba(46,204,113,0.1)":"rgba(231,76,60,0.1)",color:error.includes("created")?C.green:C.red,border:`1px solid ${error.includes("created")?C.green:C.red}`}}>{error}</div>}
-        {tab==="signup"&&<div style={{marginBottom:12}}><label style={lbl}>Full Name</label><input style={inp} placeholder="Jane Smith" value={form.name} onChange={e=>sf("name")(e.target.value)}/></div>}
-        <div style={{marginBottom:12}}><label style={lbl}>Email</label><input style={inp} type="email" placeholder="you@email.com" value={form.email} onChange={e=>sf("email")(e.target.value)}/></div>
-        <div style={{marginBottom:12}}><label style={lbl}>Password</label><input style={inp} type="password" placeholder="••••••••" value={form.password} onChange={e=>sf("password")(e.target.value)}/></div>
+        {tab==="signup"&&<div style={{marginBottom:12}}><label style={lbl}>Full Name</label><input style={inp} name="name" autoComplete="name" placeholder="Jane Smith" value={form.name} onChange={e=>sf("name")(e.target.value)}/></div>}
+        <div style={{marginBottom:12}}><label style={lbl}>Email</label><input style={inp} type="email" name="email" autoComplete="email" placeholder="you@email.com" value={form.email} onChange={e=>sf("email")(e.target.value)}/></div>
+        <div style={{marginBottom:12}}><label style={lbl}>Password</label><input style={inp} type="password" name="password" autoComplete={tab==="signin"?"current-password":"new-password"} placeholder="••••••••" value={form.password} onChange={e=>sf("password")(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&tab==="signin")submit();}}/></div>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.dim,marginBottom:14,cursor:"pointer"}}>
+          <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{accentColor:C.gold,width:15,height:15,cursor:"pointer"}}/>
+          Remember my email on this device
+        </label>
         {tab==="signup"&&<>
           <div style={{marginBottom:12}}>
             <label style={lbl}>I am a...</label>
@@ -155,7 +182,11 @@ function AuthModal({onClose,onAuth}) {
           </div>}
           {(form.role==="buyer"||form.role==="seller")&&<div style={{background:"rgba(46,204,113,0.05)",border:"1px solid rgba(46,204,113,0.15)",borderRadius:8,padding:"10px 14px",marginBottom:12}}><p style={{color:C.green,fontSize:12}}>$5 / year — browse all reports & inspector Balance Scores</p></div>}
         </>}
-        <button onClick={submit} disabled={loading} style={{...bGold,width:"100%",marginTop:8,opacity:loading?0.7:1}}>{loading?<><Spinner/> Please wait...</>:tab==="signin"?"Sign In →":"Create Account →"}</button>
+        <button onClick={submit} disabled={loading} style={{...bGold,width:"100%",marginTop:4,opacity:loading?0.7:1}}>{loading?<><Spinner/> Please wait...</>:tab==="signin"?"Sign In →":"Create Account →"}</button>
+        <p style={{textAlign:"center",fontSize:13,color:C.dim,marginTop:16}}>
+          {tab==="signin"?"New to InspectorTrust? ":"Already have an account? "}
+          <button onClick={toggleMode} style={{background:"none",border:"none",color:C.gold,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>{tab==="signin"?"Create an account":"Sign in"}</button>
+        </p>
       </div>
     </div>
   );
