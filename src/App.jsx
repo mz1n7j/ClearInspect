@@ -911,7 +911,7 @@ export default function App() {
       const res=await fetch("/api/analyze",{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},
-        body:JSON.stringify({mode:"analyze",inspectorName:form.inspectorName,companyName:form.companyName,licenseNo:form.licenseNo,propertyAddress:addr,reportText:form.reportText,yearBuilt:propertyData?.yearBuilt||null,homeAge:propertyData?.homeAge||null,propertyType:propertyData?.propertyType||null,sqft:propertyData?.sqft||null}),
+        body:JSON.stringify({mode:"analyze",inspectorName:form.inspectorName,companyName:form.companyName,licenseNo:form.licenseNo,propertyAddress:addr,reportText:form.reportText,yearBuilt:propertyData?.yearBuilt||null,homeAge:propertyData?.homeAge||null,propertyType:propertyData?.propertyType||null,sqft:propertyData?.sqft||null,buyerEmail:form.buyerEmail,sellerEmail:form.sellerEmail,realtorEmail:form.realtorEmail}),
       });
       const data=await res.json();
       if(!res.ok){
@@ -1125,7 +1125,7 @@ export default function App() {
       </main>}
 
       {/* REPORT VIEW */}
-      {view==="report"&&analysisResult&&<ReportView report={analysisResult} onSendEmails={sendEmails} emailSending={emailSending} emailSent={emailSent} onBack={()=>navTo("database")}/>}
+      {view==="report"&&analysisResult&&<ReportView report={analysisResult} onSendEmails={sendEmails} emailSending={emailSending} emailSent={emailSent} onBack={()=>navTo("database")} token={session?.token}/>}
 
       {/* REGISTRY */}
       {view==="database"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
@@ -1287,6 +1287,7 @@ export default function App() {
             onSendEmails={sendEmails}
             emailSending={emailSending}
             emailSent={emailSent}
+            token={session?.token}
             onBack={()=>{setView("home");setSharedToken(null);setSharedReport(null);window.history.replaceState({},"","/");}}
           />
         ):(
@@ -1461,7 +1462,7 @@ function downscaleImage(file,maxDim=1600,quality=0.7){
 
 function InspectionTemplateView({session,showToast,onAnalyzed}){
   const [sections,setSections]=useState(buildTplStandard);
-  const [basic,setBasic]=useState({inspectorName:"",license:"",company:"",date:new Date().toISOString().slice(0,10),street:"",city:"",state:"",zip:"",client:"",yearBuilt:"",weather:""});
+  const [basic,setBasic]=useState({inspectorName:"",license:"",company:"",date:new Date().toISOString().slice(0,10),street:"",city:"",state:"",zip:"",client:"",yearBuilt:"",weather:"",buyerEmail:"",sellerEmail:"",realtorEmail:""});
   const [fills,setFills]=useState({});
   const [editMode,setEditMode]=useState(false);
   const [loading,setLoading]=useState(true);
@@ -1506,7 +1507,7 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
         const res=await fetch("/api/template",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({action:"upload_photo",dataUrl})});
         const data=await res.json();
         if(!res.ok)throw new Error(data.error||"Upload failed");
-        setFills(f=>{const cur=f[id]||{condition:"",notes:"",photos:[]};return {...f,[id]:{...cur,photos:[...(cur.photos||[]),data.url]}};});
+        setFills(f=>{const cur=f[id]||{condition:"",notes:"",photos:[]};return {...f,[id]:{...cur,photos:[...(cur.photos||[]),{path:data.path,preview:data.url}]}};});
       }
     }catch(e){showToast("Photo: "+e.message,"error");}
     finally{setUploadingId(null);}
@@ -1552,7 +1553,9 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
     if(completed===0){showToast("Record at least one item's condition before analyzing.","error");return;}
     setAnalyzing(true);
     try{
-      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({mode:"analyze",inspectorName:basic.inspectorName,companyName:basic.company,licenseNo:basic.license,propertyAddress:addr,reportText:serialize(),yearBuilt:basic.yearBuilt||null,homeAge:basic.yearBuilt?(new Date().getFullYear()-Number(basic.yearBuilt)):null,propertyType:null,sqft:null})});
+      const photos=[];
+      for(const sec of sections){for(const it of sec.items){const f=fills[it.id];if(f?.photos?.length){for(const p of f.photos){if(p?.path)photos.push({path:p.path,section:sec.title,item:it.label,weight:it.weight,condition:f.condition||""});}}}}
+      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({mode:"analyze",inspectorName:basic.inspectorName,companyName:basic.company,licenseNo:basic.license,propertyAddress:addr,reportText:serialize(),yearBuilt:basic.yearBuilt||null,homeAge:basic.yearBuilt?(new Date().getFullYear()-Number(basic.yearBuilt)):null,propertyType:null,sqft:null,buyerEmail:basic.buyerEmail,sellerEmail:basic.sellerEmail,realtorEmail:basic.realtorEmail,photos})});
       const data=await res.json();
       if(res.status===401){showToast("Session expired — sign in again.","error");return;}
       if(!res.ok)throw new Error(data.error||"Analysis failed");
@@ -1603,6 +1606,9 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
           <div><label style={lbl}>Client</label><input style={inp} value={basic.client} onChange={e=>setBf("client",e.target.value)} placeholder="Buyer name"/></div>
           <div><label style={lbl}>Year Built</label><input style={inp} value={basic.yearBuilt} onChange={e=>setBf("yearBuilt",e.target.value)} placeholder="2014"/></div>
           <div><label style={lbl}>Weather / Conditions</label><input style={inp} value={basic.weather} onChange={e=>setBf("weather",e.target.value)} placeholder="Clear, 72°F, dry"/></div>
+          <div><label style={lbl}>Buyer email <span style={{color:C.faint}}>(photo access)</span></label><input style={inp} value={basic.buyerEmail} onChange={e=>setBf("buyerEmail",e.target.value)} placeholder="buyer@email.com"/></div>
+          <div><label style={lbl}>Seller email <span style={{color:C.faint}}>(photo access)</span></label><input style={inp} value={basic.sellerEmail} onChange={e=>setBf("sellerEmail",e.target.value)} placeholder="seller@email.com"/></div>
+          <div><label style={lbl}>Realtor email</label><input style={inp} value={basic.realtorEmail} onChange={e=>setBf("realtorEmail",e.target.value)} placeholder="realtor@email.com"/></div>
         </div>
       </div>
 
@@ -1655,9 +1661,9 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
                         {uploadingId===item.id?<><Spinner/> Uploading…</>:"📷 Add photo"}
                         <input type="file" accept="image/*" capture="environment" multiple style={{display:"none"}} disabled={uploadingId===item.id} onChange={e=>{addPhotos(item.id,e.target.files);e.target.value="";}}/>
                       </label>
-                      {(f.photos||[]).map((src,i)=>(
+                      {(f.photos||[]).map((p,i)=>(
                         <div key={i} style={{position:"relative"}}>
-                          <img src={src} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                          <img src={p.preview} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`}}/>
                           <button onClick={()=>removePhoto(item.id,i)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:C.red,color:"#fff",border:"none",fontSize:11,cursor:"pointer",lineHeight:1}}>×</button>
                         </div>
                       ))}
@@ -1681,8 +1687,48 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
   );
 }
 
+// ── REPORT PHOTOS (access-controlled signed-URL gallery) ─────
+function ReportPhotos({reportId,token}){
+  const [state,setState]=useState({loading:true,photos:[],error:""});
+  useEffect(()=>{
+    let alive=true;
+    if(!reportId||!String(reportId).includes("-")){setState({loading:false,photos:[],error:""});return;}
+    (async()=>{
+      try{
+        const res=await fetch("/api/template",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"get_photos",reportId})});
+        const data=await res.json();
+        if(!alive)return;
+        if(res.status===403){setState({loading:false,photos:[],error:data.error||"Photos are restricted."});return;}
+        if(!res.ok)throw new Error(data.error||"Could not load photos.");
+        setState({loading:false,photos:data.photos||[],error:""});
+      }catch(e){if(alive)setState({loading:false,photos:[],error:e.message});}
+    })();
+    return ()=>{alive=false;};
+  },[reportId,token]);
+
+  if(state.loading)return <div style={{textAlign:"center",padding:"40px 0"}}><Spinner lg/><p style={{color:C.dim,marginTop:12,fontSize:13}}>Loading photos…</p></div>;
+  if(state.error)return <div style={{...card,textAlign:"center",color:C.dim}}>🔒 {state.error}</div>;
+  if(!state.photos.length)return <div style={{...card,textAlign:"center",color:C.dim}}>No photos attached to this inspection.</div>;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14,animation:"fadeIn 0.2s ease"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12}}>
+        {state.photos.map((p,i)=>(
+          <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>
+            <div style={{...cardSm,padding:8}}>
+              <img src={p.url} alt={p.item||"inspection photo"} style={{width:"100%",height:130,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`,display:"block"}}/>
+              <div style={{marginTop:6,fontSize:11,color:C.text,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.item||"Photo"}</div>
+              <div style={{fontSize:10,color:C.dim}}>{p.section}{p.condition?` · ${p.condition}`:""}</div>
+            </div>
+          </a>
+        ))}
+      </div>
+      <p style={{fontSize:11,color:C.faint,textAlign:"center"}}>Private links, expire after an hour. Visible only to the agent and the buyer/seller on this report.</p>
+    </div>
+  );
+}
+
 // ── REPORT VIEW ──────────────────────────────────────────────
-function ReportView({report,onSendEmails,emailSending,emailSent,onBack}) {
+function ReportView({report,onSendEmails,emailSending,emailSent,onBack,token}) {
   const a=report.analysis;
   const [tab,setTab]=useState("overview");
   const [pdfExp,setPdfExp]=useState(false);
@@ -1758,9 +1804,10 @@ function ReportView({report,onSendEmails,emailSending,emailSent,onBack}) {
       </div>
 
       <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:18,overflowX:"auto"}}>
-        {["overview","findings","scores","emails","flags"].map(t=><button key={t} onClick={()=>setTab(t)} style={tabB(tab===t)}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
+        {["overview","findings","scores","emails","flags","photos"].map(t=><button key={t} onClick={()=>setTab(t)} style={tabB(tab===t)}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
       </div>
 
+      {tab==="photos"&&<ReportPhotos reportId={report.id} token={token}/>}
       {tab==="overview"&&<div style={{display:"flex",flexDirection:"column",gap:14,animation:"fadeIn 0.2s ease"}}>
         {a.homeAgeContext&&<div style={{background:"rgba(52,152,219,0.06)",border:"1px solid rgba(52,152,219,0.2)",borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:10,marginBottom:4}}><span style={{fontSize:16}}>🏠</span><p style={{fontSize:13,color:"#7fb3d3"}}>{a.homeAgeContext}</p></div>}
         <div style={card}><div style={cTitle}>AI Summary</div><p style={{fontSize:14,color:"#aaa",lineHeight:1.75}}>{a.summary}</p></div>
