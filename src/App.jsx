@@ -1030,12 +1030,14 @@ export default function App() {
   const viewReport=r=>{setAnalysisResult(r);setEmailSent(false);setView("report");};
   const onTemplateAnalyzed=(nr)=>{setReports(r=>[nr,...r]);setAnalysisResult(nr);setEmailSent(false);setView("report");if(nr.savedToDb&&session?.token)setTimeout(()=>loadRegistryReports(session.token),2000);};
 
+  const role=session?.profile?.role;
+  const isInspector=role==="inspector";
   const navLinks=[
     ["upload","Upload"],
-    ["template","Template"],
+    ...(isInspector?[["template","Template"]]:[]),
     ["database",`Registry (${reports.length})`],
     ["reports","Reports"],
-    ["directory","Find Inspectors"],
+    isInspector?["myinspections","My Inspections"]:["directory","Find Inspectors"],
     ["rankings","Rankings"],
   ];
 
@@ -1224,11 +1226,11 @@ export default function App() {
       {view==="report"&&analysisResult&&<ReportView report={analysisResult} onSendEmails={sendEmails} emailSending={emailSending} emailSent={emailSent} onBack={()=>navTo("database")} token={session?.token}/>}
 
       {/* REGISTRY */}
-      {view==="database"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
+      {(view==="database"||view==="myinspections")&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
           <div>
-            <h2 style={{fontSize:24,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>Inspector Registry</h2>
-            <p style={{color:C.dim,fontSize:14}}>Organized by property address. Multiple inspections per property are grouped together.</p>
+            <h2 style={{fontSize:24,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>{view==="myinspections"?"My Inspections":"Inspector Registry"}</h2>
+            <p style={{color:C.dim,fontSize:14}}>{view==="myinspections"?"The inspection reports you've submitted, grouped by property.":"Organized by property address. Multiple inspections per property are grouped together."}</p>
           </div>
           <button onClick={()=>loadRegistryReports(session?.token)} style={bGhost}>↻ Refresh</button>
         </div>
@@ -1245,19 +1247,20 @@ export default function App() {
           {registrySearch&&<button onClick={()=>setRegistrySearch("")} style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:16}}>✕</button>}
         </div>
 
-        {reports.length===0?(
+        {(view==="myinspections"?reports.filter(r=>r.submittedBy===session?.profile?.id):reports).length===0?(
           <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
             <div style={{fontSize:48,marginBottom:14}}>🔍</div>
-            <p style={{color:C.dim,marginBottom:6}}>{session?"No reports found. Submit the first one.":"Sign in to view all reports."}</p>
+            <p style={{color:C.dim,marginBottom:6}}>{view==="myinspections"?"You haven't submitted any inspections yet.":session?"No reports found. Submit the first one.":"Sign in to view all reports."}</p>
             <button style={{...bGold,marginTop:14}} onClick={()=>session?navTo("upload"):setShowAuth(true)}>{session?"Submit a Report":"Sign In to View"}</button>
           </div>
         ):(()=>{
+          const src=view==="myinspections"?reports.filter(r=>r.submittedBy===session?.profile?.id):reports;
           const q=(registrySearch||"").toLowerCase();
-          const filtered=q?reports.filter(r=>
+          const filtered=q?src.filter(r=>
             (r.propertyAddress||"").toLowerCase().includes(q)||
             (r.inspectorName||"").toLowerCase().includes(q)||
             (r.companyName||"").toLowerCase().includes(q)
-          ):reports;
+          ):src;
 
           if(filtered.length===0)return(
             <div style={{textAlign:"center",padding:"40px",border:`1px dashed ${C.border}`,borderRadius:12}}>
@@ -1403,13 +1406,13 @@ export default function App() {
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
           <div><h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Directory</h2><p style={{color:C.dim,fontSize:14}}>Find verified, rated inspectors in your area.</p></div>
-          <button style={bGold} onClick={()=>session?navTo("upload"):(setAuthIntent({mode:"signup",role:"inspector"}),setShowAuth(true))}>Register as Inspector — $5/mo or $50/yr →</button>
+          <button style={bGold} onClick={()=>{setAuthIntent({mode:"signup",role:"inspector"});setShowAuth(true);}}>Register as Inspector — $5/mo or $50/yr →</button>
         </div>
         <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
           <div style={{fontSize:48,marginBottom:14}}>🔍</div>
           <p style={{color:C.dim,marginBottom:6}}>No verified inspectors listed yet.</p>
           <p style={{color:"#444",fontSize:13}}>Be the first to register.</p>
-          <button style={{...bGold,marginTop:18}} onClick={()=>session?navTo("upload"):(setAuthIntent({mode:"signup",role:"inspector"}),setShowAuth(true))}>Register Now →</button>
+          <button style={{...bGold,marginTop:18}} onClick={()=>{setAuthIntent({mode:"signup",role:"inspector"});setShowAuth(true);}}>Register Now →</button>
         </div>
       </main>}
 
