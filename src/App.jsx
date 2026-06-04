@@ -1027,7 +1027,7 @@ export default function App() {
           <h1 style={{fontSize:"clamp(28px,6vw,52px)",fontWeight:800,letterSpacing:"-0.03em",color:"#fff",margin:"14px 0 12px",lineHeight:1.1}}>Know Who's Really<br/><span style={{color:C.gold}}>Inspecting Your Home.</span></h1>
           <p style={{fontSize:"clamp(13px,2vw,15px)",color:"#666",maxWidth:500,margin:"0 auto 22px",lineHeight:1.7}}>The first transparent inspection platform scoring every inspector on fairness, balance, and accuracy — separating real defects from negotiation tactics.</p>
           <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-            <button style={bGold} onClick={()=>session?navTo("upload"):setShowAuth(true)}>{session?"Analyze a Report →":"Get Started Free →"}</button>
+            <button style={bGold} onClick={()=>session?navTo("upload"):setShowAuth(true)}>{session?"Analyze a Report →":"Get Started →"}</button>
             <button style={bOut} onClick={()=>navTo("reports")}>View Reports Dashboard</button>
           </div>
         </div>
