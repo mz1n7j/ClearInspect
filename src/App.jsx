@@ -244,6 +244,55 @@ function AccountPage({profile,token,showToast}) {
 }
 
 // ── REPORTS DASHBOARD ────────────────────────────────────────
+// ── LOCKED TEASER (blurred fake preview for logged-out visitors) ──
+// All data here is fake placeholder content — no real report data is ever
+// rendered for logged-out users, so the blur can't be defeated to leak anything.
+function LockedTeaser({onUnlock,title,subtitle}) {
+  const riskColor=r=>r==="High"?C.red:r==="Moderate"?C.gold:C.green;
+  const gradeColor=g=>g==="A"?C.green:g==="B"?C.gold:g==="C"?"#e67e22":C.red;
+  const fake=[
+    {name:"Marcus Reilly",company:"Summit Home Inspections",lic:"TREC #21847",addr:"1429 Oak Hollow Dr, Austin, TX",date:"Apr 12, 2026",trust:91,balance:50,grade:"A",risk:"Low",summary:"Thorough inspection covering all major systems. Issues flagged proportionately with no exaggeration."},
+    {name:"Danielle Pham",company:"Lone Star Property Inspect",lic:"TREC #19302",addr:"88 Cypress Bend, Round Rock, TX",date:"Apr 9, 2026",trust:64,balance:27,grade:"C",risk:"Moderate",summary:"Heavy emphasis on cosmetic items; several minor observations framed as urgent concerns."},
+    {name:"Greg Halvorsen",company:"Independent",lic:"HI-44120",addr:"305 Meadowlark Ln, Cedar Park, TX",date:"Apr 3, 2026",trust:37,balance:84,grade:"F",risk:"High",summary:"Sparse documentation. Major systems barely addressed; reads closer to a rubber-stamp than a real inspection."},
+    {name:"Aisha Bello",company:"Capital Inspect Group",lic:"TREC #25588",addr:"7720 Riata Trace, Austin, TX",date:"Mar 28, 2026",trust:83,balance:57,grade:"B",risk:"Low",summary:"Strong, professional report with a slight lean toward buyer concerns on a few line items."},
+  ];
+  return (
+    <div style={{position:"relative"}}>
+      <div aria-hidden="true" style={{filter:"blur(6px)",pointerEvents:"none",userSelect:"none",opacity:0.7,display:"flex",flexDirection:"column",gap:10}}>
+        {fake.map((r,i)=>(
+          <div key={i} style={card}>
+            <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                  <span style={{fontWeight:700,fontSize:15,color:"#fff"}}>{r.name}</span>
+                  <span style={{...tag(C.blue),fontSize:10}}>2026</span>
+                </div>
+                <div style={{color:C.dim,fontSize:12,marginBottom:3}}>{r.company} · {r.lic}</div>
+                <div style={{color:C.dim,fontSize:12}}>📍 {r.addr} · {r.date}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <ScoreBadge score={r.trust}/>
+                <span style={tag(riskColor(r.risk))}>{r.risk} Risk</span>
+                <span style={{fontSize:16,fontFamily:"monospace",fontWeight:800,color:gradeColor(r.grade)}}>{r.grade}</span>
+              </div>
+            </div>
+            <div style={{marginTop:10}}><BalanceBar score={r.balance}/></div>
+            <p style={{color:"#666",fontSize:12,marginTop:10,lineHeight:1.6}}>{r.summary}</p>
+          </div>
+        ))}
+      </div>
+      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{...card,maxWidth:400,textAlign:"center",background:"rgba(17,17,17,0.94)"}}>
+          <div style={{fontSize:34,marginBottom:10}}>🔒</div>
+          <h3 style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:8}}>{title}</h3>
+          <p style={{color:C.dim,fontSize:13,lineHeight:1.6,marginBottom:18}}>{subtitle}</p>
+          <button style={{...bGold,width:"100%",justifyContent:"center"}} onClick={onUnlock}>Sign In / Create Account →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportsDashboard({session,showToast}) {
   const [reports,setReports]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -1297,7 +1346,7 @@ export default function App() {
       </main>}
 
       {/* REPORTS DASHBOARD */}
-      {view==="reports"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><ReportsDashboard session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to access the Reports Dashboard.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
+      {view==="reports"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><ReportsDashboard session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><h2 style={{fontSize:24,fontWeight:800,letterSpacing:"-0.02em",marginBottom:16}}>Reports Dashboard</h2><LockedTeaser onUnlock={()=>setShowAuth(true)} title="Sign in to unlock the reports dashboard" subtitle="See every inspector's Trust Score, Balance Score, letter grade, and fraud-risk rating across all analyzed reports."/></main>)}
 
       {/* SHARED REPORT (account-gated open) */}
       {view==="shared"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
