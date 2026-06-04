@@ -1014,7 +1014,18 @@ export default function App() {
     finally{setUploading(false);}
   };
 
-  const sendEmails=async()=>{setEmailSending(true);await new Promise(r=>setTimeout(r,1800));setEmailSending(false);setEmailSent(true);showToast("Email summaries dispatched.");};
+  const sendEmails=async(reportId)=>{
+    if(!reportId){showToast("This report needs to be saved before emails can be sent.","error");return;}
+    setEmailSending(true);
+    try{
+      const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session?.token}`},body:JSON.stringify({mode:"send_party_emails",reportId})});
+      const data=await res.json();
+      setEmailSending(false);
+      if(!res.ok){showToast(data.error||"Could not send emails.","error");return;}
+      if(data.notified&&data.notified.length){setEmailSent(true);showToast(`Summary emailed to: ${data.notified.join(", ")}.`);}
+      else showToast("No buyer/seller/realtor email is on file for this report.","error");
+    }catch(e){setEmailSending(false);showToast("Network error sending emails.","error");}
+  };
   const viewReport=r=>{setAnalysisResult(r);setEmailSent(false);setView("report");};
   const onTemplateAnalyzed=(nr)=>{setReports(r=>[nr,...r]);setAnalysisResult(nr);setEmailSent(false);setView("report");if(nr.savedToDb&&session?.token)setTimeout(()=>loadRegistryReports(session.token),2000);};
 
@@ -1951,7 +1962,7 @@ function ReportView({report,onSendEmails,emailSending,emailSent,onBack,token}) {
             <div style={{borderTop:`1px solid #1a1a1a`,paddingTop:10,fontSize:12,color:"#777",fontFamily:"monospace",lineHeight:1.75,whiteSpace:"pre-wrap"}}>{a[e.key]}</div>
           </div>
         ))}
-        <button style={{...bGold,width:"100%",justifyContent:"center",opacity:emailSent||emailSending?0.5:1,cursor:emailSent||emailSending?"default":"pointer"}} onClick={()=>!emailSent&&!emailSending&&onSendEmails()} disabled={emailSending||emailSent}>
+        <button style={{...bGold,width:"100%",justifyContent:"center",opacity:emailSent||emailSending?0.5:1,cursor:emailSent||emailSending?"default":"pointer"}} onClick={()=>!emailSent&&!emailSending&&onSendEmails(report.id)} disabled={emailSending||emailSent}>
           {emailSent?"✓ Emails Dispatched":emailSending?<><Spinner/> Sending...</>:"Dispatch All Emails →"}
         </button>
       </div>}
