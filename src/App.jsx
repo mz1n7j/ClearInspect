@@ -88,7 +88,7 @@ function Field({label:l,value,onChange,placeholder,missing,onClearMissing,type="
 
 function AuthModal({onClose,onAuth}) {
   const [tab,setTab]=useState("signin");
-  const [form,setForm]=useState({email:"",password:"",name:"",role:"buyer",licenseNumber:""});
+  const [form,setForm]=useState({email:"",password:"",name:"",role:"buyer",licenseNumber:"",interval:""});
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
@@ -106,7 +106,8 @@ function AuthModal({onClose,onAuth}) {
       }
       // Sign up — route through $1 Stripe payment first
       if(!form.email||!form.password){setError("Email and password are required.");setLoading(false);return;}
-      if(form.role==="realtor"&&!form.licenseNumber){setError("Realtors must provide a license number.");setLoading(false);return;}
+      if((form.role==="realtor"||form.role==="inspector")&&!form.licenseNumber){setError("Realtors and inspectors must provide a license number.");setLoading(false);return;}
+      if((form.role==="realtor"||form.role==="inspector")&&!form.interval){setError("Choose a billing plan — monthly or yearly.");setLoading(false);return;}
       const res=await fetch("/api/billing",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -116,6 +117,7 @@ function AuthModal({onClose,onAuth}) {
           email:form.email,
           name:form.name,
           licenseNumber:form.licenseNumber,
+          interval:(form.role==="realtor"||form.role==="inspector")?form.interval:"yearly",
         }),
       });
       const data=await res.json();
@@ -140,12 +142,18 @@ function AuthModal({onClose,onAuth}) {
         {tab==="signup"&&<>
           <div style={{marginBottom:12}}>
             <label style={lbl}>I am a...</label>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:6}}>
-              {["buyer","seller","realtor"].map(r=><button key={r} onClick={()=>sf("role")(r)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${form.role===r?C.gold:"#222"}`,background:form.role===r?"rgba(200,168,75,0.1)":"#0a0a0a",color:form.role===r?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",textTransform:"capitalize"}}>{r}</button>)}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:6}}>
+              {["buyer","seller","realtor","inspector"].map(r=><button key={r} onClick={()=>sf("role")(r)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${form.role===r?C.gold:"#222"}`,background:form.role===r?"rgba(200,168,75,0.1)":"#0a0a0a",color:form.role===r?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",textTransform:"capitalize"}}>{r}</button>)}
             </div>
           </div>
-          {form.role==="realtor"&&<div style={{marginBottom:12}}><label style={lbl}>Realtor License # *</label><input style={inp} placeholder="TX-12345678" value={form.licenseNumber} onChange={e=>sf("licenseNumber")(e.target.value)}/><p style={{color:"#444",fontSize:11,marginTop:5}}>14-day free trial · $1/year · Upload 50+ reports = free first year</p></div>}
-          {form.role!=="realtor"&&<div style={{background:"rgba(46,204,113,0.05)",border:"1px solid rgba(46,204,113,0.15)",borderRadius:8,padding:"10px 14px",marginBottom:12}}><p style={{color:C.green,fontSize:12}}>✓ Free account — browse registry and view all reports</p></div>}
+          {(form.role==="realtor"||form.role==="inspector")&&<div style={{marginBottom:12}}><label style={lbl}>{form.role==="realtor"?"Realtor":"Inspector"} License # *</label><input style={inp} placeholder="TX-12345678" value={form.licenseNumber} onChange={e=>sf("licenseNumber")(e.target.value)}/></div>}
+          {(form.role==="realtor"||form.role==="inspector")&&<div style={{marginBottom:12}}>
+            <label style={lbl}>Billing plan *</label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:6}}>
+              {[["monthly","$5 / month"],["yearly","$50 / year"]].map(([k,txt])=><button key={k} onClick={()=>sf("interval")(k)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${form.interval===k?C.gold:"#222"}`,background:form.interval===k?"rgba(200,168,75,0.1)":"#0a0a0a",color:form.interval===k?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>{txt}</button>)}
+            </div>
+          </div>}
+          {(form.role==="buyer"||form.role==="seller")&&<div style={{background:"rgba(46,204,113,0.05)",border:"1px solid rgba(46,204,113,0.15)",borderRadius:8,padding:"10px 14px",marginBottom:12}}><p style={{color:C.green,fontSize:12}}>$5 / year — browse all reports & inspector Balance Scores</p></div>}
         </>}
         <button onClick={submit} disabled={loading} style={{...bGold,width:"100%",marginTop:8,opacity:loading?0.7:1}}>{loading?<><Spinner/> Please wait...</>:tab==="signin"?"Sign In →":"Create Account →"}</button>
       </div>
@@ -157,7 +165,8 @@ function AccountPage({profile,token,showToast}) {
   const [loading,setLoading]=useState(false);
   const trialStart=profile?.trial_started_at?new Date(profile.trial_started_at):null;
   const daysLeft=trialStart?Math.max(0,14-Math.floor((Date.now()-trialStart)/86400000)):null;
-  const isRealtor=profile?.role==="realtor";
+  const isPaidUploader=profile?.role==="realtor"||profile?.role==="inspector";
+  const [planInterval,setPlanInterval]=useState("yearly");
   const status=profile?.subscription_status;
   const inspCount=profile?.inspection_count||0;
   const statusColor=status==="active"?C.green:status==="trial"?C.gold:C.red;
@@ -165,7 +174,7 @@ function AccountPage({profile,token,showToast}) {
   const startCheckout=async()=>{
     setLoading(true);
     try {
-      const res=await fetch("/api/billing",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"checkout"})});
+      const res=await fetch("/api/billing",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"checkout",interval:planInterval})});
       const data=await res.json();
       if(data.url)window.location.href=data.url;
       else showToast(data.error||"Could not start checkout","error");
@@ -185,23 +194,18 @@ function AccountPage({profile,token,showToast}) {
             </div>
           ))}
         </div>
-        {isRealtor&&<div style={card}>
+        {isPaidUploader&&<div style={card}>
           <div style={cTitle}>Subscription</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <span style={{width:10,height:10,borderRadius:"50%",background:statusColor,display:"inline-block"}}/>
             <span style={{color:statusColor,fontWeight:700}}>{statusLabel}</span>
           </div>
-          <div style={{marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.dim,marginBottom:5}}>
-              <span>Reports toward free year</span>
-              <span style={{color:C.gold,fontFamily:"monospace"}}>{inspCount}/50</span>
+          {status!=="active"&&<>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              {[["monthly","$5 / month"],["yearly","$50 / year"]].map(([k,txt])=><button key={k} onClick={()=>setPlanInterval(k)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${planInterval===k?C.gold:"#222"}`,background:planInterval===k?"rgba(200,168,75,0.1)":"#0a0a0a",color:planInterval===k?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>{txt}</button>)}
             </div>
-            <div style={{height:6,background:"#1e1e1e",borderRadius:99,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${Math.min(100,(inspCount/50)*100)}%`,background:inspCount>=50?C.green:C.gold,borderRadius:99}}/>
-            </div>
-            <p style={{color:inspCount>=50?C.green:C.dim,fontSize:11,marginTop:5}}>{inspCount>=50?"✓ Free first year!":(`Upload ${50-inspCount} more to earn free first year`)}</p>
-          </div>
-          {(status==="trial"||status==="expired")&&inspCount<50&&<button onClick={startCheckout} disabled={loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:loading?0.7:1}}>{loading?<><Spinner/> Loading...</>:"Subscribe — $1/year →"}</button>}
+            <button onClick={startCheckout} disabled={loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:loading?0.7:1}}>{loading?<><Spinner/> Loading...</>:"Subscribe →"}</button>
+          </>}
         </div>}
       </div>
     </div>
@@ -915,7 +919,7 @@ export default function App() {
       });
       const data=await res.json();
       if(!res.ok){
-        if(data.code==="TRIAL_EXPIRED"){setView("account");showToast(data.message,"error");return;}
+        if(data.code==="TRIAL_EXPIRED"||data.code==="SUBSCRIPTION_REQUIRED"){setView("account");showToast(data.message,"error");return;}
         if(res.status===401){clearSession();setSession(null);setUploadStep(1);setShowAuth(true);showToast("Session expired — sign in again, your report is still here.","error");return;}
         throw new Error(data.error||"Analysis failed");
       }
@@ -1006,18 +1010,18 @@ export default function App() {
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:32}}>
-          {[{n:"1 in 4",l:"inspectors flagged"},{n:"$1",l:"flat fee, all roles"},{n:"$1/yr",l:"after trial"},{n:"10 yrs",l:"data retention"}].map(s=>(
+          {[{n:"1 in 4",l:"inspectors flagged"},{n:"$5/yr",l:"buyers & sellers"},{n:"$50/yr",l:"realtors & inspectors"},{n:"10 yrs",l:"data retention"}].map(s=>(
             <div key={s.l} style={{...cardSm,textAlign:"center"}}><div style={{fontSize:"clamp(18px,3vw,24px)",fontWeight:800,color:C.gold,fontFamily:"monospace",marginBottom:3}}>{s.n}</div><div style={{fontSize:11,color:C.dim}}>{s.l}</div></div>
           ))}
         </div>
 
         <h2 style={{fontSize:"clamp(18px,3vw,22px)",fontWeight:700,letterSpacing:"-0.02em",marginBottom:6}}>Simple Pricing</h2>
-        <p style={{color:C.dim,fontSize:14,marginBottom:18}}>For buyers, sellers, and realtors.</p>
+        <p style={{color:C.dim,fontSize:14,marginBottom:18}}>For buyers, sellers, realtors, and inspectors.</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,marginBottom:40}}>
           {[
-            {title:"Buyer / Seller",price:"$1",color:C.green,features:["Browse all inspection reports","View inspector Balance Scores","Search reports by property address","One-time $1 activation · No renewals"],btn:"green",lbl:"Sign Up — $1 →"},
-            {title:"Realtor",price:"$1",color:C.gold,features:["Upload & analyze inspection reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export · 10-year storage","One-time $1 activation · No renewals"],btn:"gold",lbl:"Sign Up — $1 →"},
-            {title:"Inspector",price:"$1",color:C.blue,features:["Listed in verified inspector directory","Verified badge on your profile","Aggregate scores from all your reports","Realtors & buyers can find you","Yearly performance rankings","One-time $1 activation · No renewals"],btn:"blue",lbl:"Sign Up — $1 →"},
+            {title:"Buyer / Seller",price:"$5/yr",color:C.green,features:["Browse all inspection reports","View inspector Balance Scores","Search reports by property address","$5 per year"],btn:"green",lbl:"Sign Up →"},
+            {title:"Realtor",price:"$5/mo or $50/yr",color:C.gold,features:["Upload & analyze inspection reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export · 10-year storage","$5/month or $50/year"],btn:"gold",lbl:"Sign Up →"},
+            {title:"Inspector",price:"$5/mo or $50/yr",color:C.blue,features:["Listed in verified inspector directory","Verified badge on your profile","Aggregate scores from all your reports","Realtors & buyers can find you","Yearly performance rankings","$5/month or $50/year"],btn:"blue",lbl:"Sign Up →"},
           ].map(p=>(
             <div key={p.title} style={{...card,borderColor:`${p.color}30`,display:"flex",flexDirection:"column"}}>
               <div style={{color:p.color,fontSize:10,fontFamily:"monospace",letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:7}}>{p.title}</div>
@@ -1307,7 +1311,7 @@ export default function App() {
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
           <div><h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Directory</h2><p style={{color:C.dim,fontSize:14}}>Find verified, rated inspectors in your area.</p></div>
-          <button style={bGold}>Register as Inspector — $1/yr →</button>
+          <button style={bGold}>Register as Inspector — $5/mo or $50/yr →</button>
         </div>
         <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
           <div style={{fontSize:48,marginBottom:14}}>🔍</div>
