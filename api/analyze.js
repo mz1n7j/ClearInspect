@@ -166,14 +166,12 @@ Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"",
       const profiles = await sbGet(`profiles?id=eq.${userId}&select=*`);
       const profile = profiles[0];
 
-      if (profile?.role === "realtor") {
-        const trialStart = new Date(profile.trial_started_at);
-        const daysSince = (Date.now() - trialStart) / 86400000;
-        const expired = daysSince > 14;
-        const paid = profile.subscription_status === "active";
-        const freeVol = (profile.inspection_count||0) >= 50;
-        if (expired && !paid && !freeVol) {
-          return res.status(403).json({ code: "TRIAL_EXPIRED", message: "Your 14-day trial has ended. Subscribe for $20/year to continue." });
+      if (profile?.role === "realtor" || profile?.role === "inspector") {
+        // Paid roles must have an active subscription. ("trial" is grandfathered
+        // for any accounts created under the old model.)
+        const status = profile.subscription_status;
+        if (status !== "active" && status !== "trial") {
+          return res.status(403).json({ code: "SUBSCRIPTION_REQUIRED", message: "Your subscription is inactive. Please subscribe to continue uploading reports." });
         }
       }
 
