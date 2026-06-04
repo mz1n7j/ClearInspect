@@ -8,96 +8,115 @@ module.exports = async function handler(req, res) {
   const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
   const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
 
-  const { action, role, email, name, password, licenseNumber } = req.body;
+  const { action, role, email, name, licenseNumber, interval } = req.body;
+
+  // ── (role, interval) -> Stripe recurring Price ID, from env vars ──
+  // Create these Prices in your Stripe dashboard, then set the env vars:
+  //   STRIPE_PRICE_BUYER_YEARLY        ($5/year, recurring)   — buyers & sellers
+  //   STRIPE_PRICE_REALTOR_MONTHLY     ($5/month, recurring)
+  //   STRIPE_PRICE_REALTOR_YEARLY      ($50/year, recurring)
+  //   STRIPE_PRICE_INSPECTOR_MONTHLY   ($5/month, recurring)
+  //   STRIPE_PRICE_INSPECTOR_YEARLY    ($50/year, recurring)
+  function resolvePrice(roleRaw, intervalRaw) {
+    const r = (roleRaw || "buyer").toLowerCase();
+    const i = (intervalRaw || "yearly").toLowerCase() === "monthly" ? "monthly" : "yearly";
+    // Buyers & sellers: yearly only ($5/yr)
+    if (r === "buyer" || r === "seller") {
+      return { priceId: process.env.STRIPE_PRICE_BUYER_YEARLY, envName: "STRIPE_PRICE_BUYER_YEARLY", interval: "yearly" };
+    }
+    if (r === "realtor") {
+      return i === "monthly"
+        ? { priceId: process.env.STRIPE_PRICE_REALTOR_MONTHLY, envName: "STRIPE_PRICE_REALTOR_MONTHLY", interval: "monthly" }
+        : { priceId: process.env.STRIPE_PRICE_REALTOR_YEARLY, envName: "STRIPE_PRICE_REALTOR_YEARLY", interval: "yearly" };
+    }
+    if (r === "inspector") {
+      return i === "monthly"
+        ? { priceId: process.env.STRIPE_PRICE_INSPECTOR_MONTHLY, envName: "STRIPE_PRICE_INSPECTOR_MONTHLY", interval: "monthly" }
+        : { priceId: process.env.STRIPE_PRICE_INSPECTOR_YEARLY, envName: "STRIPE_PRICE_INSPECTOR_YEARLY", interval: "yearly" };
+    }
+    return { priceId: null, envName: null, interval: "yearly" };
+  }
+
+  async function createSubscriptionCheckout({ priceId, customerEmail, metadata, successUrl, cancelUrl }) {
+    const params = new URLSearchParams({
+      mode: "subscription",
+      "payment_method_types[0]": "card",
+      customer_email: customerEmail || "",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    });
+    for (const [k, v] of Object.entries(metadata || {})) {
+      const val = v == null ? "" : String(v);
+      params.append(`metadata[${k}]`, val);
+      params.append(`subscription_data[metadata][${k}]`, val);
+    }
+    const r = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${STRIPE_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+    const data = await r.json();
+    return { ok: r.ok, data };
+  }
 
   try {
-    // ── SIGNUP CHECKOUT — $1 for all roles ──────────────────────
+    // ── SIGNUP CHECKOUT — recurring subscription, price by (role, interval) ──
     if (action === "signup_checkout") {
-      const roleLabels = {
-        buyer: "Buyer Account",
-        seller: "Seller Account",
-        realtor: "Realtor Account",
-        inspector: "Inspector Account",
-      };
-      const label = roleLabels[role] || "InspectorTrust Account";
-
-      // Encode signup data in metadata so we can create the account after payment
-      const params = new URLSearchParams({
-        mode: "payment",
-        "payment_method_types[0]": "card",
-        customer_email: email || "",
-        "line_items[0][price_data][currency]": "usd",
-        "line_items[0][price_data][product_data][name]": `InspectorTrust — ${label}`,
-        "line_items[0][price_data][product_data][description]": `One-time $1 account activation fee for InspectorTrust.`,
-        "line_items[0][price_data][unit_amount]": "100",
-        "line_items[0][quantity]": "1",
-        "metadata[role]": role || "buyer",
-        "metadata[email]": email || "",
-        "metadata[name]": name || "",
-        "metadata[licenseNumber]": licenseNumber || "",
-        success_url: `${SITE_URL}?signup_success=true&role=${role}&email=${encodeURIComponent(email||"")}`,
-        cancel_url: `${SITE_URL}?signup_cancelled=true`,
+      const { priceId, envName, interval: resolved } = resolvePrice(role, interval);
+      if (!priceId) {
+        return res.status(500).json({ error: `Pricing isn't configured for this plan yet (missing ${envName || "price"}). Add the Stripe price ID to your environment variables.` });
+      }
+      const successUrl = `${SITE_URL}?signup_success=true&role=${encodeURIComponent(role || "buyer")}&email=${encodeURIComponent(email || "")}`;
+      const cancelUrl = `${SITE_URL}?signup_cancelled=true`;
+      const { ok, data } = await createSubscriptionCheckout({
+        priceId,
+        customerEmail: email,
+        metadata: { role: role || "buyer", email: email || "", name: name || "", licenseNumber: licenseNumber || "", interval: resolved },
+        successUrl, cancelUrl,
       });
-
-      const r = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${STRIPE_KEY}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
-      });
-
-      const data = await r.json();
-      if (!r.ok) return res.status(400).json({ error: data.error?.message || "Stripe error" });
+      if (!ok) return res.status(400).json({ error: data.error?.message || "Stripe error" });
       return res.status(200).json({ url: data.url });
     }
 
-    // ── CONFIRM SIGNUP (called after successful Stripe payment) ──
+    // ── CONFIRM SIGNUP (server-verified path; verifies the Stripe session) ──
+    // Not used by the current redirect flow, kept for future hardening.
     if (action === "confirm_signup") {
-      const { sessionId } = req.body;
+      const { sessionId, password } = req.body;
       const SUPABASE_URL = process.env.SUPABASE_URL;
       const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-      // Verify payment with Stripe
       const sessionRes = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}`, {
         headers: { "Authorization": `Bearer ${STRIPE_KEY}` },
       });
       const session = await sessionRes.json();
-      if (!sessionRes.ok || session.payment_status !== "paid") {
+      const paid = session.payment_status === "paid" || session.status === "complete";
+      if (!sessionRes.ok || !paid) {
         return res.status(400).json({ error: "Payment not confirmed." });
       }
 
-      const { role: pRole, email: pEmail, name: pName, licenseNumber: pLicense, password: pPass } = session.metadata;
+      const { role: pRole, email: pEmail, name: pName, licenseNumber: pLicense } = session.metadata || {};
 
-      // Create Supabase user
       const signupRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Authorization": `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
         body: JSON.stringify({
           email: pEmail,
-          password: pPass || Math.random().toString(36).slice(2) + "Aa1!",
+          password: password || Math.random().toString(36).slice(2) + "Aa1!",
           email_confirm: true,
           user_metadata: { name: pName, role: pRole },
         }),
       });
-
       const signupData = await signupRes.json();
       if (!signupRes.ok) return res.status(400).json({ error: signupData.message || "Account creation failed" });
 
-      // Create profile
       await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Authorization": `Bearer ${SUPABASE_KEY}`,
-          "Prefer": "return=minimal",
-        },
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Prefer": "return=minimal" },
         body: JSON.stringify({
           id: signupData.id,
           email: pEmail,
@@ -107,14 +126,13 @@ module.exports = async function handler(req, res) {
           trial_started_at: null,
           inspection_count: 0,
           subscription_status: "active",
-          paid_at: new Date().toISOString(),
         }),
       });
 
       return res.status(200).json({ success: true });
     }
 
-    // ── REALTOR SUBSCRIPTION RENEWAL ────────────────────────────
+    // ── (RE)SUBSCRIBE for an existing signed-in account ──
     if (action === "checkout") {
       const token = (req.headers.authorization || "").replace("Bearer ", "");
       const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -124,29 +142,27 @@ module.exports = async function handler(req, res) {
         headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
       });
       const userData = await userRes.json();
+      if (!userRes.ok) return res.status(401).json({ error: "Session expired. Please sign back in." });
 
-      const params = new URLSearchParams({
-        mode: "payment",
-        "payment_method_types[0]": "card",
-        customer_email: userData.email || "",
-        "line_items[0][price_data][currency]": "usd",
-        "line_items[0][price_data][product_data][name]": "InspectorTrust — Annual Renewal",
-        "line_items[0][price_data][unit_amount]": "100",
-        "line_items[0][quantity]": "1",
-        success_url: `${SITE_URL}?subscribed=true`,
-        cancel_url: `${SITE_URL}?subscribed=cancelled`,
+      // Resolve the role from the saved profile (don't trust the client).
+      const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=role`, {
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
       });
+      const profs = await pRes.json();
+      const pRole = (Array.isArray(profs) && profs[0]?.role) || role || "buyer";
 
-      const r = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${STRIPE_KEY}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
+      const { priceId, envName, interval: resolved } = resolvePrice(pRole, interval);
+      if (!priceId) {
+        return res.status(500).json({ error: `Pricing isn't configured for this plan yet (missing ${envName || "price"}).` });
+      }
+      const { ok, data } = await createSubscriptionCheckout({
+        priceId,
+        customerEmail: userData.email,
+        metadata: { role: pRole, email: userData.email || "", interval: resolved },
+        successUrl: `${SITE_URL}?subscribed=true`,
+        cancelUrl: `${SITE_URL}?subscribed=cancelled`,
       });
-      const data = await r.json();
-      if (!r.ok) return res.status(400).json({ error: data.error?.message || "Stripe error" });
+      if (!ok) return res.status(400).json({ error: data.error?.message || "Stripe error" });
       return res.status(200).json({ url: data.url });
     }
 
