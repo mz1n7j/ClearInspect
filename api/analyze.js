@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -9,6 +11,7 @@ module.exports = async function handler(req, res) {
   const SK = process.env.SUPABASE_SERVICE_KEY;
   const AK = process.env.ANTHROPIC_API_KEY;
   const ATTOM = process.env.ATTOM_API_KEY;
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
 
   if (!AK) return res.status(500).json({ error: "Anthropic API key not configured." });
 
@@ -462,7 +465,9 @@ ${reportClean}`,
       for (const p of partyTargets) {
         const to = (p.to || "").trim();
         if (!to) continue;
-        const ok = await sendPartyEmail({ to, propertyAddress, inspectorName, role: p.type, body: p.body, analysis });
+        const shareToken = await createShareToken(SB, SK, reportId, to);
+        const reportUrl = shareToken ? `${SITE_URL}?shared=${shareToken}` : SITE_URL;
+        const ok = await sendPartyEmail({ to, propertyAddress, inspectorName, role: p.type, body: p.body, analysis, reportUrl });
         if (ok) {
           notified.push(p.type);
           if (reportId) sbPost("email_sends", {
@@ -526,7 +531,9 @@ ${reportClean}`,
       for (const p of targets) {
         const to = (p.to || "").trim();
         if (!to) continue;
-        const ok = await sendPartyEmail({ to, propertyAddress: report.property_address || "", inspectorName: report.inspector_name || "", role: p.type, body: p.body, analysis: a });
+        const shareToken = await createShareToken(SB, SK, rid, to);
+        const reportUrl = shareToken ? `${SITE_URL}?shared=${shareToken}` : SITE_URL;
+        const ok = await sendPartyEmail({ to, propertyAddress: report.property_address || "", inspectorName: report.inspector_name || "", role: p.type, body: p.body, analysis: a, reportUrl });
         if (ok) {
           notified.push(p.type);
           await sbPost("email_sends", {
@@ -606,12 +613,29 @@ ${reportClean}`,
       const { reportId } = req.body;
       if (!reportId) return res.status(400).json({ error: "Report ID required." });
 
+      // Remove child rows first so foreign-key constraints don't block the delete.
+      // A report that has had emails sent or share links created has rows in these
+      // tables; without clearing them, Postgres refuses to delete the parent report.
+      for (const t of ["email_sends", "report_shares", "correction_requests"]) {
+        try {
+          const cr = await fetch(`${SB}/rest/v1/${t}?report_id=eq.${reportId}`, {
+            method: "DELETE",
+            headers: { "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=minimal" },
+          });
+          if (!cr.ok) console.error(`delete child ${t} for ${reportId} -> ${cr.status}: ${await cr.text()}`);
+        } catch (e) { console.error(`delete child ${t} threw: ${e.message}`); }
+      }
+
       const r = await fetch(`${SB}/rest/v1/inspection_reports?id=eq.${reportId}`, {
         method: "DELETE",
         headers: { "apikey": SK, "Authorization": `Bearer ${SK}`, "Prefer": "return=minimal" },
       });
 
-      if (!r.ok) return res.status(500).json({ error: "Delete failed." });
+      if (!r.ok) {
+        const detail = await r.text();
+        console.error(`delete report ${reportId} FAILED ${r.status}: ${detail}`);
+        return res.status(500).json({ error: "Delete failed.", details: detail });
+      }
       return res.status(200).json({ success: true });
     }
 
@@ -671,8 +695,33 @@ ${reportClean}`,
   }
 };
 
+// Create a one-off share token for a report so a party email can link straight
+// to it (same mechanism as the manual "share report" feature). Returns the
+// token string, or null on failure (caller falls back to the site URL).
+async function createShareToken(SB, SK, reportId, recipientEmail) {
+  if (!reportId || !SB || !SK) return null;
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+  try {
+    const r = await fetch(`${SB}/rest/v1/report_shares`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: SK, Authorization: `Bearer ${SK}`, Prefer: "return=minimal" },
+      body: JSON.stringify({
+        report_id: reportId,
+        recipient_email: recipientEmail || null,
+        token,
+        expires_at: expiresAt,
+        accessed: false,
+        created_at: new Date().toISOString(),
+      }),
+    });
+    if (!r.ok) { console.error(`report_shares insert (party email) FAILED ${r.status}: ${await r.text()}`); return null; }
+    return token;
+  } catch (e) { console.error(`createShareToken threw: ${e.message}`); return null; }
+}
+
 // Send one AI-written party summary email via Resend. Returns true on success.
-async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body, analysis }) {
+async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body, analysis, reportUrl }) {
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
   const EMAIL_FROM = process.env.EMAIL_FROM;
   const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
@@ -680,6 +729,7 @@ async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body, 
     console.error("sendPartyEmail skipped: RESEND_API_KEY or EMAIL_FROM is missing");
     return false;
   }
+  const ctaUrl = reportUrl || SITE_URL;
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const nl2br = (s) => esc(s).replace(/\n/g, "<br>");
   const a = analysis || {};
@@ -725,8 +775,9 @@ async function sendPartyEmail({ to, propertyAddress, inspectorName, role, body, 
           ${concerns.length ? `<h3 style="font-size:13px;color:#c0392b;margin:18px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Concerns</h3>${list(concerns)}` : ""}
           ${recommendation ? `<h3 style="font-size:13px;color:#1a1a1a;margin:18px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">Recommendation</h3><p style="margin:6px 0 0;color:#222;font-size:14px;line-height:1.6;">${nl2br(recommendation)}</p>` : ""}
           <div style="text-align:center;margin:28px 0 8px;">
-            <a href="${SITE_URL}" style="display:inline-block;background:#C8A84B;color:#0e0e0e;text-decoration:none;font-weight:700;font-size:15px;padding:12px 28px;border-radius:8px;">Sign in to view the full report &rarr;</a>
+            <a href="${ctaUrl}" style="display:inline-block;background:#C8A84B;color:#0e0e0e;text-decoration:none;font-weight:700;font-size:15px;padding:12px 28px;border-radius:8px;">View your inspection report &rarr;</a>
           </div>
+          <p style="color:#999;font-size:11px;text-align:center;margin:0 0 8px;">You'll be asked to sign in to open it.</p>
           <hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
           <p style="color:#888;font-size:12px;">Generated by InspectorTrust, which scores inspection reports for balance and accuracy. <a href="${SITE_URL}" style="color:#b8902f;">${esc(SITE_URL.replace(/^https?:\/\//,""))}</a></p>
         </div>`,
