@@ -82,6 +82,22 @@ module.exports = async function handler(req, res) {
       let profile = profiles[0] || null;
       return res.status(200).json({ session: { access_token: accessToken }, profile });
     }
+    if (action === "accept_terms") {
+      const t = (req.body && req.body.token) || (req.headers.authorization || "").replace("Bearer ", "");
+      if (!t) return res.status(401).json({ error: "Not authenticated." });
+      const uRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${t}` },
+      });
+      const u = await uRes.json();
+      if (!uRes.ok || !u?.id) return res.status(401).json({ error: "Session expired. Please sign back in." });
+      const up = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Prefer": "return=minimal" },
+        body: JSON.stringify({ terms_accepted_at: new Date().toISOString(), terms_version: "1.0" }),
+      });
+      if (!up.ok) { console.error(`accept_terms PATCH ${up.status}: ${await up.text()}`); return res.status(500).json({ error: "Could not record acceptance. Please try again." }); }
+      return res.status(200).json({ success: true });
+    }
     return res.status(400).json({ error: "Unknown action." });
   } catch (err) {
     console.error("auth error:", err);
