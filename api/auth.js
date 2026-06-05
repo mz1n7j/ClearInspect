@@ -54,6 +54,14 @@ module.exports = async function handler(req, res) {
           subscription_status: "active",
         }),
       });
+      // Record terms acceptance (best-effort; harmless if the columns don't exist).
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Prefer": "return=minimal" },
+          body: JSON.stringify({ terms_accepted_at: new Date().toISOString(), terms_version: "1.0" }),
+        });
+      } catch (_) {}
       return res.status(200).json({ success: true });
     }
     if (action === "signin") {
