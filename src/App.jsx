@@ -192,16 +192,15 @@ function AuthModal({onClose,onAuth,initialMode,initialRole}) {
   );
 }
 
-function AccountPage({profile,token,showToast}) {
+function AccountPage({profile,token,showToast,onStatusChange}) {
   const [loading,setLoading]=useState(false);
   const trialStart=profile?.trial_started_at?new Date(profile.trial_started_at):null;
   const daysLeft=trialStart?Math.max(0,14-Math.floor((Date.now()-trialStart)/86400000)):null;
   const isPaidUploader=profile?.role==="realtor"||profile?.role==="inspector";
   const [planInterval,setPlanInterval]=useState("yearly");
   const status=profile?.subscription_status;
-  const inspCount=profile?.inspection_count||0;
-  const statusColor=status==="active"?C.green:status==="trial"?C.gold:C.red;
-  const statusLabel=status==="active"?"Active":status==="trial"?`Trial — ${daysLeft} days left`:"Expired";
+  const statusColor=status==="active"?C.green:status==="trial"?C.gold:status==="canceling"?C.gold:C.red;
+  const statusLabel=status==="active"?"Active":status==="trial"?`Trial — ${daysLeft} days left`:status==="canceling"?"Canceling at period end":"Inactive";
   const startCheckout=async()=>{
     setLoading(true);
     try {
@@ -209,6 +208,18 @@ function AccountPage({profile,token,showToast}) {
       const data=await res.json();
       if(data.url)window.location.href=data.url;
       else showToast(data.error||"Could not start checkout","error");
+    } catch{showToast("Network error","error");}
+    finally{setLoading(false);}
+  };
+  const cancelSub=async()=>{
+    if(!window.confirm("Cancel your subscription? You'll keep access until the end of your current billing period, and you won't be charged again."))return;
+    setLoading(true);
+    try {
+      const res=await fetch("/api/billing",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({action:"cancel"})});
+      const data=await res.json();
+      if(!res.ok){showToast(data.error||"Could not cancel.","error");}
+      else if(!data.cancelled){showToast(data.message||"No active subscription found to cancel.","error");}
+      else{showToast(data.message||"Subscription canceled.");onStatusChange&&onStatusChange("canceling");}
     } catch{showToast("Network error","error");}
     finally{setLoading(false);}
   };
@@ -225,19 +236,24 @@ function AccountPage({profile,token,showToast}) {
             </div>
           ))}
         </div>
-        {isPaidUploader&&<div style={card}>
+        <div style={card}>
           <div style={cTitle}>Subscription</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
             <span style={{width:10,height:10,borderRadius:"50%",background:statusColor,display:"inline-block"}}/>
             <span style={{color:statusColor,fontWeight:700}}>{statusLabel}</span>
           </div>
-          {status!=="active"&&<>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          {status==="active"&&<>
+            <p style={{color:C.dim,fontSize:13,marginBottom:12,lineHeight:1.6}}>Cancel anytime. You'll keep access until the end of your current billing period and won't be charged again.</p>
+            <button onClick={cancelSub} disabled={loading} style={{...bOut,width:"100%",justifyContent:"center",color:C.red,borderColor:`${C.red}66`,opacity:loading?0.7:1}}>{loading?<><Spinner/> Working...</>:"Cancel subscription"}</button>
+          </>}
+          {status==="canceling"&&<p style={{color:C.dim,fontSize:13,lineHeight:1.6}}>Your subscription is set to cancel at the end of the current billing period. You'll keep access until then, and you won't be charged again.</p>}
+          {status!=="active"&&status!=="canceling"&&<>
+            {isPaidUploader&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
               {[["monthly","$5 / month"],["yearly","$50 / year"]].map(([k,txt])=><button key={k} onClick={()=>setPlanInterval(k)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${planInterval===k?C.gold:"#222"}`,background:planInterval===k?"rgba(200,168,75,0.1)":"#0a0a0a",color:planInterval===k?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>{txt}</button>)}
-            </div>
+            </div>}
             <button onClick={startCheckout} disabled={loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:loading?0.7:1}}>{loading?<><Spinner/> Loading...</>:"Subscribe →"}</button>
           </>}
-        </div>}
+        </div>
       </div>
     </div>
   );
@@ -1440,7 +1456,7 @@ export default function App() {
       {view==="rankings"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><YearlyRankings session={session} reports={reports} onRefresh={()=>loadRegistryReports(session?.token)}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to view inspector rankings.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
 
       {/* ACCOUNT */}
-      {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast}/></main>}
+      {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast} onStatusChange={(s)=>{const ns={...session,profile:{...session.profile,subscription_status:s}};saveSession(ns);setSession(ns);}}/></main>}
 
       {/* DIRECTORY */}
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
