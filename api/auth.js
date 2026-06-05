@@ -98,6 +98,57 @@ module.exports = async function handler(req, res) {
       if (!up.ok) { console.error(`accept_terms PATCH ${up.status}: ${await up.text()}`); return res.status(500).json({ error: "Could not record acceptance. Please try again." }); }
       return res.status(200).json({ success: true });
     }
+    if (action === "request_password_reset") {
+      const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      const EMAIL_FROM = process.env.EMAIL_FROM;
+      if (!email) return res.status(400).json({ error: "Email is required." });
+      try {
+        // Supabase mints a secure recovery link (no email sent by Supabase); we email it ourselves.
+        const genRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
+          body: JSON.stringify({ type: "recovery", email, redirect_to: SITE_URL }),
+        });
+        const gen = await genRes.json();
+        const link = gen.action_link || (gen.properties && gen.properties.action_link);
+        if (genRes.ok && link && RESEND_API_KEY && EMAIL_FROM) {
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_API_KEY}` },
+            body: JSON.stringify({
+              from: EMAIL_FROM,
+              to: email,
+              subject: "Reset your InspectorTrust password",
+              html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;">
+                <h2 style="margin:0 0 8px;">Reset your password</h2>
+                <p style="color:#444;font-size:14px;line-height:1.6;">We received a request to reset the password for your InspectorTrust account. Click the button below to choose a new password. If you didn't request this, you can safely ignore this email.</p>
+                <div style="text-align:center;margin:24px 0;">
+                  <a href="${link}" style="display:inline-block;background:#C8A84B;color:#0e0e0e;text-decoration:none;font-weight:700;font-size:15px;padding:12px 28px;border-radius:8px;">Reset password &rarr;</a>
+                </div>
+                <p style="color:#888;font-size:12px;">This link expires shortly for your security. If the button doesn't work, copy and paste this URL into your browser:<br>${link}</p>
+              </div>`,
+            }),
+          });
+        } else if (!genRes.ok) {
+          console.error(`generate_link ${genRes.status}: ${JSON.stringify(gen)}`);
+        }
+      } catch (e) { console.error("request_password_reset error:", e.message); }
+      // Always return success so we never reveal whether an account exists.
+      return res.status(200).json({ success: true });
+    }
+    if (action === "update_password") {
+      const { token, password } = req.body;
+      if (!token || !password) return res.status(400).json({ error: "Missing token or password." });
+      if (String(password).length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ password }),
+      });
+      if (!r.ok) { console.error(`update_password ${r.status}: ${await r.text()}`); return res.status(400).json({ error: "Your reset link has expired or is invalid. Please request a new one." }); }
+      return res.status(200).json({ success: true });
+    }
     return res.status(400).json({ error: "Unknown action." });
   } catch (err) {
     console.error("auth error:", err);
