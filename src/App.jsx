@@ -95,6 +95,7 @@ function AuthModal({onClose,onAuth,initialMode,initialRole}) {
   const [error,setError]=useState("");
   const [remember,setRemember]=useState(false);
   const [agreed,setAgreed]=useState(false);
+  const [resetSent,setResetSent]=useState(false);
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
 
   // Prefill the last-used email if the person asked us to remember it.
@@ -114,6 +115,12 @@ function AuthModal({onClose,onAuth,initialMode,initialRole}) {
   const submit=async()=>{
     setError("");setLoading(true);
     try {
+      // Forgot password — email a reset link
+      if(tab==="reset"){
+        if(!form.email){setError("Enter your email address.");setLoading(false);return;}
+        await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"request_password_reset",email:form.email})});
+        setResetSent(true);setLoading(false);return;
+      }
       // Sign in — direct auth
       if(tab==="signin"){
         const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"signin",email:form.email,password:form.password})});
@@ -157,17 +164,20 @@ function AuthModal({onClose,onAuth,initialMode,initialRole}) {
     <div style={{...mOv,alignItems:"center",padding:16}} onClick={onClose}>
       <div style={{...mBox,borderRadius:16,maxWidth:420,animation:"fadeIn 0.2s ease"}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <h2 style={{fontSize:19,fontWeight:800,color:"#fff",letterSpacing:"-0.01em"}}>{tab==="signin"?"Welcome back":"Create your account"}</h2>
+          <h2 style={{fontSize:19,fontWeight:800,color:"#fff",letterSpacing:"-0.01em"}}>{tab==="signin"?"Welcome back":tab==="reset"?"Reset password":"Create your account"}</h2>
           <button onClick={onClose} style={{background:"none",border:"none",color:C.dim,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
         {error&&<div style={{padding:"10px 14px",borderRadius:8,fontSize:13,marginBottom:14,background:error.includes("created")?"rgba(46,204,113,0.1)":"rgba(231,76,60,0.1)",color:error.includes("created")?C.green:C.red,border:`1px solid ${error.includes("created")?C.green:C.red}`}}>{error}</div>}
         {tab==="signup"&&<div style={{marginBottom:12}}><label style={lbl}>Full Name</label><input style={inp} name="name" autoComplete="name" placeholder="Jane Smith" value={form.name} onChange={e=>sf("name")(e.target.value)}/></div>}
         <div style={{marginBottom:12}}><label style={lbl}>Email</label><input style={inp} type="email" name="email" autoComplete="email" placeholder="you@email.com" value={form.email} onChange={e=>sf("email")(e.target.value)}/></div>
-        <div style={{marginBottom:12}}><label style={lbl}>Password</label><input style={inp} type="password" name="password" autoComplete={tab==="signin"?"current-password":"new-password"} placeholder="••••••••" value={form.password} onChange={e=>sf("password")(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&tab==="signin")submit();}}/></div>
-        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.dim,marginBottom:14,cursor:"pointer"}}>
+        {tab==="reset"&&!resetSent&&<p style={{color:C.dim,fontSize:13,lineHeight:1.6,marginBottom:14}}>Enter your account email and we'll send you a link to reset your password.</p>}
+        {tab==="reset"&&resetSent&&<div style={{padding:"12px 14px",borderRadius:8,fontSize:13,marginBottom:14,background:"rgba(46,204,113,0.1)",color:C.green,border:`1px solid ${C.green}`}}>If an account exists for that email, a password reset link is on its way. Check your inbox (and spam folder).</div>}
+        {tab!=="reset"&&<div style={{marginBottom:12}}><label style={lbl}>Password</label><input style={inp} type="password" name="password" autoComplete={tab==="signin"?"current-password":"new-password"} placeholder="••••••••" value={form.password} onChange={e=>sf("password")(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&tab==="signin")submit();}}/></div>}
+        {tab==="signin"&&<div style={{textAlign:"right",marginBottom:12,marginTop:-4}}><button onClick={()=>{setTab("reset");setError("");setResetSent(false);}} style={{background:"none",border:"none",color:C.gold,cursor:"pointer",fontSize:12,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>Forgot password?</button></div>}
+        {tab!=="reset"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.dim,marginBottom:14,cursor:"pointer"}}>
           <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{accentColor:C.gold,width:15,height:15,cursor:"pointer"}}/>
           Remember my email on this device
-        </label>
+        </label>}
         {tab==="signup"&&<>
           <div style={{marginBottom:12}}>
             <label style={lbl}>I am a...</label>
@@ -188,10 +198,9 @@ function AuthModal({onClose,onAuth,initialMode,initialRole}) {
           <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{accentColor:C.gold,width:15,height:15,cursor:"pointer",marginTop:1,flexShrink:0}}/>
           <span>I have read and agree to the <a href="?view=terms" target="_blank" rel="noopener noreferrer" style={{color:C.gold,textDecoration:"underline"}}>Terms &amp; Conditions</a>, including the AI-generated-content disclaimer and limitation of liability.</span>
         </label>}
-        <button onClick={submit} disabled={loading} style={{...bGold,width:"100%",marginTop:4,opacity:loading?0.7:1}}>{loading?<><Spinner/> Please wait...</>:tab==="signin"?"Sign In →":"Create Account →"}</button>
+        {!(tab==="reset"&&resetSent)&&<button onClick={submit} disabled={loading} style={{...bGold,width:"100%",marginTop:4,opacity:loading?0.7:1}}>{loading?<><Spinner/> Please wait...</>:tab==="signin"?"Sign In →":tab==="reset"?"Send reset link →":"Create Account →"}</button>}
         <p style={{textAlign:"center",fontSize:13,color:C.dim,marginTop:16}}>
-          {tab==="signin"?"New to InspectorTrust? ":"Already have an account? "}
-          <button onClick={toggleMode} style={{background:"none",border:"none",color:C.gold,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>{tab==="signin"?"Create an account":"Sign in"}</button>
+          {tab==="reset"?<button onClick={()=>{setTab("signin");setError("");setResetSent(false);}} style={{background:"none",border:"none",color:C.gold,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>← Back to sign in</button>:<>{tab==="signin"?"New to InspectorTrust? ":"Already have an account? "}<button onClick={toggleMode} style={{background:"none",border:"none",color:C.gold,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",padding:0,textDecoration:"underline"}}>{tab==="signin"?"Create an account":"Sign in"}</button></>}
         </p>
       </div>
     </div>
@@ -804,6 +813,38 @@ function TermsGate({token, view, onAccepted, onSignOut, showToast}) {
   );
 }
 
+// ── SET-NEW-PASSWORD MODAL (shown when arriving from a recovery link) ──
+function ResetPasswordModal({token, onDone, showToast}) {
+  const [pw,setPw]=useState("");
+  const [pw2,setPw2]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+  const submit=async()=>{
+    if(pw.length<6){setErr("Password must be at least 6 characters.");return;}
+    if(pw!==pw2){setErr("Passwords don't match.");return;}
+    setErr("");setLoading(true);
+    try{
+      const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"update_password",token,password:pw})});
+      const data=await res.json();
+      if(!res.ok){setErr(data.error||"Could not reset password.");setLoading(false);return;}
+      showToast&&showToast("Password updated — please sign in with your new password.");
+      onDone&&onDone();
+    }catch{setErr("Network error. Please try again.");setLoading(false);}
+  };
+  return (
+    <div style={{...mOv,alignItems:"center",padding:16,zIndex:3000}}>
+      <div style={{...mBox,borderRadius:16,maxWidth:420}}>
+        <h2 style={{fontSize:19,fontWeight:800,color:"#fff",marginBottom:8}}>Set a new password</h2>
+        <p style={{color:C.dim,fontSize:13,marginBottom:16}}>Choose a new password for your InspectorTrust account.</p>
+        {err&&<div style={{padding:"10px 14px",borderRadius:8,fontSize:13,marginBottom:14,background:"rgba(231,76,60,0.1)",color:C.red,border:`1px solid ${C.red}`}}>{err}</div>}
+        <div style={{marginBottom:12}}><label style={lbl}>New password</label><input style={inp} type="password" autoComplete="new-password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)}/></div>
+        <div style={{marginBottom:16}}><label style={lbl}>Confirm new password</label><input style={inp} type="password" autoComplete="new-password" placeholder="••••••••" value={pw2} onChange={e=>setPw2(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit();}}/></div>
+        <button onClick={submit} disabled={loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:loading?0.7:1}}>{loading?<><Spinner/> Updating...</>:"Update password →"}</button>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
   const [view,setView]=useState(()=>{try{return new URLSearchParams(window.location.search).get("view")==="terms"?"terms":"home";}catch{return "home";}});
@@ -818,6 +859,7 @@ export default function App() {
   const [dragOver,setDragOver]=useState(false);
   const [showAuth,setShowAuth]=useState(false);
   const [authIntent,setAuthIntent]=useState(null);
+  const [recoveryToken,setRecoveryToken]=useState(()=>{try{const h=new URLSearchParams(window.location.hash.replace(/^#/,""));return h.get("type")==="recovery"?h.get("access_token"):null;}catch{return null;}});
   const [session,setSession]=useState(null);
   const [mobileMenu,setMobileMenu]=useState(false);
   const [sharedToken,setSharedToken]=useState(null);
@@ -1190,6 +1232,7 @@ export default function App() {
       {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:9999,background:C.surface,border:`1px solid ${toast.type==="error"?C.red:C.gold}`,color:toast.type==="error"?C.red:C.gold,padding:"12px 18px",borderRadius:8,fontSize:12,fontFamily:"monospace",maxWidth:320,animation:"fadeIn 0.3s ease",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>{toast.msg}</div>}
       {showAuth&&<AuthModal onClose={()=>{setShowAuth(false);setAuthIntent(null);}} onAuth={onAuth} initialMode={authIntent?.mode} initialRole={authIntent?.role}/>}
       {session&&session.profile&&(!session.profile.terms_accepted_at||session.profile.terms_version!==TERMS_VERSION)&&<TermsGate token={session.token} view={view} showToast={showToast} onSignOut={signOut} onAccepted={()=>{const ns={...session,profile:{...session.profile,terms_accepted_at:new Date().toISOString(),terms_version:TERMS_VERSION}};saveSession(ns);setSession(ns);}}/>}
+      {recoveryToken&&<ResetPasswordModal token={recoveryToken} showToast={showToast} onDone={()=>{setRecoveryToken(null);try{window.history.replaceState(null,"",window.location.pathname);}catch{}setShowAuth(true);}}/>}
 
       {/* HEADER */}
       <header style={{position:"sticky",top:0,zIndex:100,background:"rgba(14,14,14,0.96)",borderBottom:`1px solid ${C.border}`,backdropFilter:"blur(10px)"}}>
