@@ -1068,7 +1068,7 @@ export default function App() {
             {session?(
               <>
                 <button onClick={()=>navTo("account")} style={{background:"none",border:view==="account"?`1px solid ${C.gold}`:"1px solid #2a2a2a",color:view==="account"?C.gold:C.muted,fontSize:13,cursor:"pointer",padding:"6px 10px",borderRadius:6,fontFamily:"inherit",marginLeft:4}}>Account{session.profile?.subscription_status==="trial"?" 🕐":session.profile?.subscription_status==="expired"?" ⚠️":""}</button>
-                <button onClick={signOut} style={{background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:"6px 8px",fontFamily:"inherit"}}>Out</button>
+                <button onClick={signOut} style={{background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:"6px 8px",fontFamily:"inherit"}}>Sign Out</button>
               </>
             ):<button onClick={()=>setShowAuth(true)} style={{...bGold,fontSize:13,padding:"8px 16px",marginLeft:4}}>Sign In →</button>}
           </nav>
