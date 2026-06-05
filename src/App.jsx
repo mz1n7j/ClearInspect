@@ -1744,6 +1744,13 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
   const [saving,setSaving]=useState(false);
   const [analyzing,setAnalyzing]=useState(false);
   const [uploadingId,setUploadingId]=useState(null);
+  const userId=session?.profile?.id||"anon";
+  const AUTOSAVE_KEY=`it_tpl_autosave_${userId}`;
+  const DRAFTS_KEY=`it_tpl_drafts_${userId}`;
+  const [lastSaved,setLastSaved]=useState(null);
+  const [restored,setRestored]=useState(false);
+  const [drafts,setDrafts]=useState([]);
+  const [showDrafts,setShowDrafts]=useState(false);
 
   useEffect(()=>{(async()=>{
     try{
@@ -1757,8 +1764,74 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
     finally{setLoading(false);}
   })();},[]);
 
+  // Auto-save the in-progress inspection to this device (debounced ~0.8s after typing stops).
+  useEffect(()=>{
+    if(loading)return;
+    const t=setTimeout(()=>{
+      try{
+        const anyFill=Object.values(fills).some(f=>f&&(f.condition||f.notes||(f.photos&&f.photos.length)));
+        if(!anyFill&&!basic.street&&!basic.client)return; // nothing worth saving yet
+        localStorage.setItem(AUTOSAVE_KEY,JSON.stringify({basic,fills,sections,savedAt:Date.now()}));
+        setLastSaved(Date.now());
+      }catch{}
+    },800);
+    return ()=>clearTimeout(t);
+  },[basic,fills,sections,loading]);
+
+  // On load (once the template has loaded), resume any in-progress draft + read saved drafts.
+  useEffect(()=>{
+    if(loading)return;
+    try{
+      const raw=localStorage.getItem(AUTOSAVE_KEY);
+      if(raw){
+        const d=JSON.parse(raw);
+        const hasWork=d&&(Object.keys(d.fills||{}).length||(d.basic&&(d.basic.street||d.basic.client)));
+        if(hasWork){
+          if(d.basic)setBasic(b=>({...b,...d.basic}));
+          if(d.fills)setFills(d.fills);
+          if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
+          setRestored(true);setLastSaved(d.savedAt||null);
+        }
+      }
+      const dr=localStorage.getItem(DRAFTS_KEY);
+      if(dr){const arr=JSON.parse(dr);if(Array.isArray(arr))setDrafts(arr);}
+    }catch{}
+  },[loading]);
+
   const setBf=(k,v)=>setBasic(b=>({...b,[k]:v}));
   const setFill=(id,patch)=>setFills(f=>({...f,[id]:{condition:"",notes:"",photos:[],...f[id],...patch}}));
+
+  const fmtTime=(ts)=>{try{const d=new Date(ts);const sameDay=d.toDateString()===new Date().toDateString();const time=d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});return sameDay?time:`${d.toLocaleDateString([],{month:"short",day:"numeric"})} ${time}`;}catch{return "";}};
+  const countFills=(f)=>Object.values(f||{}).filter(x=>x&&x.condition).length;
+  const saveDraft=()=>{
+    const defaultName=[basic.street,basic.city].filter(Boolean).join(", ")||basic.client||"Untitled draft";
+    const name=(window.prompt("Name this saved draft — usually the property address:",defaultName)||"").trim();
+    if(!name)return;
+    try{
+      const entry={id:Date.now().toString(36),name,savedAt:Date.now(),basic,fills,sections};
+      setDrafts(prev=>{const next=[entry,...prev.filter(d=>d.name!==name)].slice(0,40);try{localStorage.setItem(DRAFTS_KEY,JSON.stringify(next));}catch{}return next;});
+      showToast(`Draft saved as "${name}" ✓`);
+    }catch{showToast("Could not save draft on this device.","error");}
+  };
+  const openDraft=(d)=>{
+    if(!window.confirm(`Open "${d.name}"? This replaces what's currently on screen.`))return;
+    if(d.basic)setBasic(b=>({...b,...d.basic}));
+    setFills(d.fills||{});
+    if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
+    setRestored(true);setShowDrafts(false);
+    showToast(`Opened "${d.name}".`);
+  };
+  const deleteDraft=(id)=>{
+    if(!window.confirm("Delete this saved draft? This can't be undone."))return;
+    setDrafts(prev=>{const next=prev.filter(d=>d.id!==id);try{localStorage.setItem(DRAFTS_KEY,JSON.stringify(next));}catch{}return next;});
+  };
+  const startFresh=()=>{
+    if(!window.confirm("Start a new blank inspection? Your in-progress work will be cleared. (Saved drafts are kept.)"))return;
+    setFills({});
+    setBasic(b=>({inspectorName:b.inspectorName,license:b.license,company:b.company,date:new Date().toISOString().slice(0,10),street:"",city:"",state:"",zip:"",client:"",yearBuilt:"",weather:"",buyerEmail:"",sellerEmail:"",realtorEmail:""}));
+    try{localStorage.removeItem(AUTOSAVE_KEY);}catch{}
+    setRestored(false);setLastSaved(null);setShowDrafts(false);
+  };
 
   const saveTemplate=async()=>{
     setSaving(true);
@@ -1836,6 +1909,8 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
       if(!res.ok)throw new Error(data.error||"Analysis failed");
       const nr={id:data.reportId||tplId(),inspectorName:basic.inspectorName,companyName:basic.company,licenseNo:basic.license,propertyAddress:addr,buyerEmail:"",sellerEmail:"",realtorEmail:"",analysis:data.analysis,savedToDb:data.saved,date:fmt(new Date())};
       if(onAnalyzed)onAnalyzed(nr);
+      try{localStorage.removeItem(AUTOSAVE_KEY);}catch{}
+      setRestored(false);setLastSaved(null);
     }catch(e){showToast("Analysis failed: "+e.message,"error");}
     finally{setAnalyzing(false);}
   };
@@ -1857,6 +1932,38 @@ function InspectionTemplateView({session,showToast,onAnalyzed}){
           <button style={bGhost} disabled={saving} onClick={saveTemplate}>{saving?<><Spinner/> Saving…</>:"💾 Save my template"}</button>
         </div>
       </div>
+
+      <div style={{...cardSm,display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{fontSize:12.5,color:lastSaved?C.green:C.dim,display:"flex",alignItems:"center",gap:6}}>
+            {lastSaved?<>✓ Auto-saved · {fmtTime(lastSaved)}</>:<>Auto-save on — your progress is kept on this device as you go</>}
+          </span>
+          {restored&&<span style={{...tag(C.blue),fontSize:10}}>Resumed in-progress draft</span>}
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button style={bGhost} onClick={saveDraft}>💾 Save draft</button>
+          {drafts.length>0&&<button style={{...bGhost,...(showDrafts?{borderColor:C.gold,color:C.gold}:{})}} onClick={()=>setShowDrafts(s=>!s)}>📂 Saved drafts ({drafts.length})</button>}
+          <button style={bGhost} onClick={startFresh}>✦ Start new</button>
+        </div>
+      </div>
+
+      {showDrafts&&drafts.length>0&&<div style={{...card,marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.gold,fontFamily:"monospace",letterSpacing:"0.05em",marginBottom:10}}>SAVED DRAFTS</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {drafts.map(d=>(
+            <div key={d.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"#0a0a0a",borderRadius:8,border:"1px solid #242424"}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13.5,fontWeight:600,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{d.name}</div>
+                <div style={{fontSize:11,color:C.dim}}>Saved {fmtTime(d.savedAt)} · {countFills(d.fills)} item{countFills(d.fills)===1?"":"s"} recorded</div>
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button style={{...bGhost,padding:"6px 12px",fontSize:12}} onClick={()=>openDraft(d)}>Open</button>
+                <button style={{...bGhost,padding:"6px 12px",fontSize:12,color:C.red,borderColor:"#e74c3c44"}} onClick={()=>deleteDraft(d.id)}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>}
 
       <div style={{...cardSm,display:"flex",gap:14,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
         {Object.keys(TPL_WEIGHTS).map(w=>(
