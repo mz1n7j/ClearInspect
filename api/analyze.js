@@ -173,7 +173,7 @@ Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"",
         // Paid roles must have an active subscription. ("trial" is grandfathered
         // for any accounts created under the old model.)
         const status = profile.subscription_status;
-        if (status !== "active" && status !== "trial") {
+        if (status !== "active" && status !== "trial" && status !== "canceling") {
           return res.status(403).json({ code: "SUBSCRIPTION_REQUIRED", message: "Your subscription is inactive. Please subscribe to continue uploading reports." });
         }
       }
