@@ -554,58 +554,92 @@ function ReportsDashboard({session,showToast}) {
 }
 
 // ── YEARLY RANKINGS ──────────────────────────────────────────
-function YearlyRankings({session}) {
-  const [data,setData]=useState([]);
-  const [year,setYear]=useState(new Date().getFullYear()-1);
-  const [loading,setLoading]=useState(true);
-  const currentYear=new Date().getFullYear();
+function YearlyRankings({session, reports, onRefresh}) {
+  const all = Array.isArray(reports) ? reports : [];
+  // Only completed analyses with a real trust score can be ranked.
+  const completed = all.filter(r => r.status === "complete" && r.analysis && typeof r.analysis.trustScore === "number");
 
-  const load=async()=>{
-    if(!session?.token)return;
-    setLoading(true);
-    try {
-      const SB=window.__SB_URL__;
-      if(!SB){setLoading(false);return;}
-      const res=await fetch(`${SB}/rest/v1/yearly_summaries?year=eq.${year}&order=ranking.asc&select=*`,{
-        headers:{"apikey":window.__SB_ANON__,"Authorization":`Bearer ${session.token}`},
-      });
-      const d=await res.json();
-      setData(Array.isArray(d)?d:[]);
-    } catch{}
-    finally{setLoading(false);}
+  // Aggregate a list of reports into per-inspector summaries, sorted best-first.
+  const aggregate = (list) => {
+    const map = {};
+    for (const r of list) {
+      const name = (r.inspectorName || "Unknown").trim() || "Unknown";
+      const t = r.analysis.trustScore;
+      const b = r.analysis.balanceScore;
+      if (!map[name]) map[name] = { name, company: r.companyName || "", license: r.licenseNo || "", count: 0, sumT: 0, sumB: 0, bCount: 0, major: 0, minor: 0 };
+      const m = map[name];
+      m.count++; m.sumT += t;
+      if (typeof b === "number") { m.sumB += b; m.bCount++; }
+      m.major += ((r.analysis.dealBreakers?.length) || 0) + ((r.analysis.notableIssues?.length) || 0);
+      m.minor += (r.analysis.minorObservations?.length) || 0;
+      if (!m.company && r.companyName) m.company = r.companyName;
+      if (!m.license && r.licenseNo) m.license = r.licenseNo;
+    }
+    return Object.values(map).map(m => ({
+      ...m,
+      avgTrust: Math.round(m.sumT / m.count),
+      avgBalance: m.bCount ? Math.round(m.sumB / m.bCount) : null,
+    })).sort((a, b) => b.avgTrust - a.avgTrust || b.count - a.count);
   };
-  useEffect(()=>{load();},[year]);
 
-  const medal=(rank)=>rank===1?"🥇":rank===2?"🥈":rank===3?"🥉":"";
-  const gradeColor=g=>g==="A"?C.green:g==="B"?C.gold:g==="C"?"#e67e22":C.red;
+  const gradeFromTrust = (t) => t >= 88 ? "A" : t >= 72 ? "B" : t >= 50 ? "C" : "F";
+  const gradeColor = g => g === "A" ? C.green : g === "B" ? C.gold : g === "C" ? "#e67e22" : C.red;
+  const medal = (rank) => rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "";
+
+  const ranked = aggregate(completed);
+  const n = ranked.length;
+
+  const now = new Date();
+  const thisMonth = completed.filter(r => { const d = r.createdAt ? new Date(r.createdAt) : null; return d && !isNaN(d) && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
+  const motm = aggregate(thisMonth)[0] || null;
+  const monthName = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   return (
     <div style={{maxWidth:960,margin:"0 auto"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Yearly Inspector Rankings</h2>
-          <p style={{color:C.dim,fontSize:14}}>Annual performance leaderboard — inspectors compete to improve.</p>
+          <h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Rankings</h2>
+          <p style={{color:C.dim,fontSize:14}}>Live leaderboard — updates with every inspection analyzed. Inspectors compete to stay on top.</p>
         </div>
-        <select style={{...inp,width:"auto",fontSize:14}} value={year} onChange={e=>setYear(Number(e.target.value))}>
-          {Array.from({length:5},(_,i)=>currentYear-1-i).map(y=><option key={y} value={y}>{y}</option>)}
-        </select>
+        {onRefresh&&<button onClick={onRefresh} style={bGhost}>↻ Refresh</button>}
       </div>
-      {loading?(
-        <div style={{textAlign:"center",padding:"60px 0"}}><Spinner lg/></div>
-      ):data.length===0?(
+
+      {/* Inspector of the Month */}
+      <div style={{...card,marginBottom:20,borderColor:`${C.gold}55`,background:"linear-gradient(135deg,rgba(200,168,75,0.10),rgba(200,168,75,0.02))"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <span style={{fontSize:18}}>🏆</span>
+          <span style={{fontSize:12,fontWeight:700,letterSpacing:"0.5px",textTransform:"uppercase",color:C.gold}}>Inspector of the Month · {monthName}</span>
+        </div>
+        {motm?(
+          <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:2}}>{motm.name}</div>
+              <div style={{color:C.dim,fontSize:13}}>{motm.company||"Independent"}{motm.license?` · License ${motm.license}`:""} · {motm.count} inspection{motm.count!==1?"s":""} this month</div>
+            </div>
+            <div style={{display:"flex",gap:18,alignItems:"center"}}>
+              <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:800,color:C.gold,fontFamily:"monospace"}}>{motm.avgTrust}</div><div style={{fontSize:10,color:C.dim}}>Avg Trust</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:800,color:gradeColor(gradeFromTrust(motm.avgTrust)),fontFamily:"monospace"}}>{gradeFromTrust(motm.avgTrust)}</div><div style={{fontSize:10,color:C.dim}}>Grade</div></div>
+            </div>
+          </div>
+        ):(
+          <p style={{color:C.dim,fontSize:13}}>No inspections analyzed yet this month — be the first to claim the spot.</p>
+        )}
+      </div>
+
+      {n===0?(
         <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
           <div style={{fontSize:48,marginBottom:14}}>📊</div>
-          <p style={{color:C.dim,marginBottom:6}}>No yearly summary available for {year}.</p>
-          <p style={{color:"#444",fontSize:13}}>Summaries are auto-generated on January 1st each year.</p>
+          <p style={{color:C.dim,marginBottom:6}}>No completed inspections to rank yet.</p>
+          <p style={{color:"#444",fontSize:13}}>Rankings build automatically as inspections are analyzed.</p>
         </div>
       ):(
         <>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:20}}>
             {[
-              {n:data.length,l:"Inspectors Ranked"},
-              {n:data.reduce((s,d)=>s+(d.total_inspections||0),0),l:"Total Inspections"},
-              {n:data[0]?.inspector_name?.split(" ")[0]||"—",l:"Top Inspector",c:C.gold},
-              {n:data[0]?.avg_trust_score||"—",l:"Top Score",c:C.green},
+              {n:n,l:"Inspectors Ranked"},
+              {n:completed.length,l:"Total Inspections"},
+              {n:ranked[0]?.name?.split(" ")[0]||"—",l:"Top Inspector",c:C.gold},
+              {n:ranked[0]?.avgTrust||"—",l:"Top Score",c:C.green},
             ].map(s=>(
               <div key={s.l} style={{...cardSm,textAlign:"center"}}>
                 <div style={{fontSize:20,fontWeight:800,color:s.c||C.gold,fontFamily:"monospace",marginBottom:2}}>{s.n}</div>
@@ -614,47 +648,52 @@ function YearlyRankings({session}) {
             ))}
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {data.map(d=>(
-              <div key={d.id} style={{...card,borderColor:d.ranking<=3?`${C.gold}40`:C.border}}>
+            {ranked.map((d,i)=>{
+              const rank=i+1;
+              const percentile=n>1?Math.round(((n-rank)/(n-1))*100):100;
+              const grade=gradeFromTrust(d.avgTrust);
+              return (
+              <div key={d.name} style={{...card,borderColor:rank<=3?`${C.gold}40`:C.border}}>
                 <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                  <div style={{fontSize:28,fontFamily:"monospace",fontWeight:800,color:d.ranking<=3?C.gold:C.dim,minWidth:40}}>
-                    {medal(d.ranking)||`#${d.ranking}`}
+                  <div style={{fontSize:28,fontFamily:"monospace",fontWeight:800,color:rank<=3?C.gold:C.dim,minWidth:40}}>
+                    {medal(rank)||`#${rank}`}
                   </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:16,color:"#fff",marginBottom:2}}>{d.inspector_name}</div>
-                    <div style={{color:C.dim,fontSize:12}}>{d.total_inspections} inspections · License {d.license_no}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:16,color:"#fff",marginBottom:2}}>{d.name}</div>
+                    <div style={{color:C.dim,fontSize:12}}>{d.count} inspection{d.count!==1?"s":""}{d.license?` · License ${d.license}`:""}</div>
                   </div>
                   <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                     <div style={{textAlign:"center"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:C.gold,fontFamily:"monospace"}}>{d.avg_trust_score}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:C.gold,fontFamily:"monospace"}}>{d.avgTrust}</div>
                       <div style={{fontSize:10,color:C.dim}}>Trust Score</div>
                     </div>
                     <div style={{textAlign:"center"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:gradeColor(d.avg_grade),fontFamily:"monospace"}}>{d.avg_grade}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:gradeColor(grade),fontFamily:"monospace"}}>{grade}</div>
                       <div style={{fontSize:10,color:C.dim}}>Grade</div>
                     </div>
                     <div style={{textAlign:"center"}}>
-                      <div style={{fontSize:16,fontWeight:700,color:C.green,fontFamily:"monospace"}}>{d.percentile}th</div>
+                      <div style={{fontSize:16,fontWeight:700,color:C.green,fontFamily:"monospace"}}>{percentile}th</div>
                       <div style={{fontSize:10,color:C.dim}}>Percentile</div>
                     </div>
                   </div>
                 </div>
                 <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:13,color:C.gold,fontFamily:"monospace",fontWeight:700}}>{d.avg_balance_score}</div>
+                    <div style={{fontSize:13,color:C.gold,fontFamily:"monospace",fontWeight:700}}>{d.avgBalance??"—"}</div>
                     <div style={{fontSize:10,color:C.dim}}>Balance Score</div>
                   </div>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:13,color:C.red,fontFamily:"monospace",fontWeight:700}}>{d.major_findings_count}</div>
+                    <div style={{fontSize:13,color:C.red,fontFamily:"monospace",fontWeight:700}}>{d.major}</div>
                     <div style={{fontSize:10,color:C.dim}}>Major Findings</div>
                   </div>
                   <div style={{textAlign:"center"}}>
-                    <div style={{fontSize:13,color:C.muted,fontFamily:"monospace",fontWeight:700}}>{d.minor_findings_count}</div>
+                    <div style={{fontSize:13,color:C.muted,fontFamily:"monospace",fontWeight:700}}>{d.minor}</div>
                     <div style={{fontSize:10,color:C.dim}}>Minor Obs.</div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
@@ -793,6 +832,7 @@ export default function App() {
           impactedSale:!!r.impacted_sale,
           canFlag:!!r.can_flag,
           date:r.created_at?new Date(r.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}):"",
+          createdAt:r.created_at||null,
           status:r.status||"complete",
           analysis:(r.analysis_data&&Object.keys(r.analysis_data).length)?{
             ...r.analysis_data,
@@ -1397,7 +1437,7 @@ export default function App() {
       {/* RANKINGS */}
       {view==="template"&&(session?<main style={{maxWidth:860,margin:"0 auto",padding:"24px 16px 80px"}}><InspectionTemplateView session={session} showToast={showToast} onAnalyzed={onTemplateAnalyzed}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to use the inspection template.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
 
-      {view==="rankings"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><YearlyRankings session={session}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to view inspector rankings.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
+      {view==="rankings"&&(session?<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><YearlyRankings session={session} reports={reports} onRefresh={()=>loadRegistryReports(session?.token)}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to view inspector rankings.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
 
       {/* ACCOUNT */}
       {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast}/></main>}
