@@ -771,6 +771,39 @@ function TermsPage() {
   );
 }
 
+// ── TERMS ACCEPTANCE GATE (existing users must accept on next login) ──
+const TERMS_VERSION = "1.0";
+function TermsGate({token, view, onAccepted, onSignOut, showToast}) {
+  const [agreed,setAgreed]=useState(false);
+  const [loading,setLoading]=useState(false);
+  if(view==="terms")return null; // let the full-terms tab render uncovered
+  const accept=async()=>{
+    if(!agreed||loading)return;
+    setLoading(true);
+    try{
+      const res=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"accept_terms",token})});
+      const data=await res.json();
+      if(!res.ok){showToast&&showToast(data.error||"Could not save — please try again.","error");setLoading(false);return;}
+      onAccepted&&onAccepted();
+    }catch{showToast&&showToast("Network error","error");setLoading(false);}
+  };
+  return (
+    <div style={{...mOv,alignItems:"center",padding:16,zIndex:3000}}>
+      <div style={{...mBox,borderRadius:16,maxWidth:440}}>
+        <h2 style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:8}}>Please review our Terms</h2>
+        <p style={{color:C.dim,fontSize:13,lineHeight:1.6,marginBottom:14}}>We've added Terms &amp; Conditions for InspectorTrust. To keep using your account, please review and agree to continue.</p>
+        <a href="?view=terms" target="_blank" rel="noopener noreferrer" style={{display:"inline-block",color:C.gold,fontSize:13,textDecoration:"underline",marginBottom:16}}>Read the full Terms &amp; Conditions →</a>
+        <label style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:C.dim,marginBottom:16,cursor:"pointer",lineHeight:1.5}}>
+          <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{accentColor:C.gold,width:15,height:15,cursor:"pointer",marginTop:1,flexShrink:0}}/>
+          <span>I have read and agree to the Terms &amp; Conditions, including the AI-generated-content disclaimer and limitation of liability.</span>
+        </label>
+        <button onClick={accept} disabled={!agreed||loading} style={{...bGold,width:"100%",justifyContent:"center",opacity:(!agreed||loading)?0.6:1,marginBottom:10}}>{loading?<><Spinner/> Saving...</>:"Agree & Continue"}</button>
+        <button onClick={onSignOut} style={{background:"none",border:"none",color:C.dim,fontSize:13,cursor:"pointer",width:"100%",fontFamily:"inherit"}}>Sign out</button>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
   const [view,setView]=useState(()=>{try{return new URLSearchParams(window.location.search).get("view")==="terms"?"terms":"home";}catch{return "home";}});
@@ -1156,6 +1189,7 @@ export default function App() {
 
       {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:9999,background:C.surface,border:`1px solid ${toast.type==="error"?C.red:C.gold}`,color:toast.type==="error"?C.red:C.gold,padding:"12px 18px",borderRadius:8,fontSize:12,fontFamily:"monospace",maxWidth:320,animation:"fadeIn 0.3s ease",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>{toast.msg}</div>}
       {showAuth&&<AuthModal onClose={()=>{setShowAuth(false);setAuthIntent(null);}} onAuth={onAuth} initialMode={authIntent?.mode} initialRole={authIntent?.role}/>}
+      {session&&session.profile&&(!session.profile.terms_accepted_at||session.profile.terms_version!==TERMS_VERSION)&&<TermsGate token={session.token} view={view} showToast={showToast} onSignOut={signOut} onAccepted={()=>{const ns={...session,profile:{...session.profile,terms_accepted_at:new Date().toISOString(),terms_version:TERMS_VERSION}};saveSession(ns);setSession(ns);}}/>}
 
       {/* HEADER */}
       <header style={{position:"sticky",top:0,zIndex:100,background:"rgba(14,14,14,0.96)",borderBottom:`1px solid ${C.border}`,backdropFilter:"blur(10px)"}}>
