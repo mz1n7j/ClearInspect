@@ -166,6 +166,56 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ url: data.url });
     }
 
+    // ── CANCEL SUBSCRIPTION (at period end) ──────────────────────
+    if (action === "cancel") {
+      const token = (req.headers.authorization || "").replace("Bearer ", "");
+      const SUPABASE_URL = process.env.SUPABASE_URL;
+      const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+      });
+      const userData = await userRes.json();
+      if (!userRes.ok || !userData?.id) return res.status(401).json({ error: "Session expired. Please sign back in." });
+      const userEmail = userData.email;
+      if (!userEmail) return res.status(400).json({ error: "No email on file for this account." });
+
+      // Find every Stripe customer with this email and cancel active subs at period end.
+      let cancelled = 0;
+      const custRes = await fetch(`https://api.stripe.com/v1/customers?email=${encodeURIComponent(userEmail)}&limit=20`, {
+        headers: { "Authorization": `Bearer ${STRIPE_KEY}` },
+      });
+      const custData = await custRes.json();
+      if (!custRes.ok) return res.status(400).json({ error: custData.error?.message || "Stripe error" });
+
+      for (const c of (custData.data || [])) {
+        const subRes = await fetch(`https://api.stripe.com/v1/subscriptions?customer=${c.id}&status=active&limit=100`, {
+          headers: { "Authorization": `Bearer ${STRIPE_KEY}` },
+        });
+        const subData = await subRes.json();
+        for (const s of (subData.data || [])) {
+          const upd = await fetch(`https://api.stripe.com/v1/subscriptions/${s.id}`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${STRIPE_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+            body: "cancel_at_period_end=true",
+          });
+          if (upd.ok) cancelled++;
+          else console.error(`cancel sub ${s.id} FAILED ${upd.status}: ${await upd.text()}`);
+        }
+      }
+
+      if (cancelled === 0) {
+        return res.status(200).json({ cancelled: 0, message: "No active subscription was found to cancel." });
+      }
+      // Reflect the cancellation in our DB so the app shows it.
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Prefer": "return=minimal" },
+        body: JSON.stringify({ subscription_status: "canceling" }),
+      });
+      return res.status(200).json({ cancelled, message: "Your subscription will cancel at the end of the current billing period. You'll keep access until then." });
+    }
+
     return res.status(400).json({ error: "Unknown action." });
   } catch (err) {
     console.error("billing error:", err.message);
