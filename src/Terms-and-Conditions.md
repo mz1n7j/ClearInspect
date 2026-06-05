@@ -40,8 +40,8 @@ You must be at least 18 years old and provide accurate registration information.
 ## 12. Subscriptions and Payments
 Paid subscriptions renew automatically until cancelled. You may cancel at any time; cancellation takes effect at the end of the then-current billing period. Except where required by law, fees already paid are non-refundable.
 
-## 13. Arbitration and Class-Action Waiver
-Any dispute arising out of or relating to these Terms or the Service shall be resolved by binding individual arbitration administered under the rules of a recognized arbitration body. You and the operator each waive any right to a jury trial and to participate in any class, collective, or representative action. [Confirm enforceability and administrator with counsel.]
+## 13. Dispute Resolution; Arbitration, Class-Action Waiver, and Attorneys' Fees
+Any dispute arising out of or relating to these Terms or the Service shall be resolved by binding individual arbitration administered under the rules of a recognized arbitration body. You and the operator each waive any right to a jury trial and to participate in any class, collective, or representative action. In any arbitration, suit, or other proceeding arising out of or relating to these Terms or the Service, the prevailing party shall be entitled to recover its reasonable attorneys' fees, costs, and expenses from the non-prevailing party, to the fullest extent permitted by law. [Confirm enforceability, administrator, and fee-shifting under Texas law with counsel.]
 
 ## 14. Governing Law and Venue
 These Terms are governed by the laws of the State of Texas, without regard to its conflict-of-laws principles. Subject to Section 13, exclusive venue lies in the state and federal courts located in Travis County, Texas.
