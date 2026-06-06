@@ -207,7 +207,7 @@ function AuthModal({onClose,onAuth,initialMode,initialRole}) {
   );
 }
 
-function AccountPage({profile,token,showToast,onStatusChange}) {
+function AccountPage({profile,token,showToast,onStatusChange,onViewAsChange}) {
   const [loading,setLoading]=useState(false);
   const trialStart=profile?.trial_started_at?new Date(profile.trial_started_at):null;
   const daysLeft=trialStart?Math.max(0,14-Math.floor((Date.now()-trialStart)/86400000)):null;
@@ -251,6 +251,17 @@ function AccountPage({profile,token,showToast,onStatusChange}) {
             </div>
           ))}
         </div>
+        {profile?.role==="admin"&&<div style={{...card,border:`1px solid ${C.purple}55`}}>
+          <div style={{...cTitle,color:C.purple}}>Admin · View as role (testing)</div>
+          <p style={{color:C.dim,fontSize:13,lineHeight:1.6,marginBottom:14}}>Preview the app exactly as each role sees it — navigation, the inspection template, and role-gated features all switch to match. You stay an admin underneath, so your admin controls and permissions are unaffected.</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+            {[["","Admin (default)"],["buyer","Admin · Buyer"],["seller","Admin · Seller"],["realtor","Admin · Realtor"],["inspector","Admin · Inspector"]].map(([val,label])=>{
+              const active=(profile?.viewAs||"")===val;
+              return <button key={val||"default"} onClick={()=>onViewAsChange&&onViewAsChange(val||null)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${active?C.purple:"#222"}`,background:active?"rgba(155,89,182,0.12)":"#0a0a0a",color:active?C.purple:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>{label}</button>;
+            })}
+          </div>
+          {profile?.viewAs&&<p style={{color:C.purple,fontSize:12,marginTop:12,lineHeight:1.5}}>Currently previewing as <strong style={{textTransform:"capitalize"}}>{profile.viewAs}</strong>. Choose “Admin (default)” to restore the admin view.</p>}
+        </div>}
         <div style={card}>
           <div style={cTitle}>Subscription</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
@@ -813,6 +824,130 @@ function TermsGate({token, view, onAccepted, onSignOut, showToast}) {
   );
 }
 
+// ── ADMIN OUTREACH (invite + gather feedback by role) ──────────
+function AdminOutreachView({session, showToast}) {
+  const me=((session?.profile?.name||"").trim().split(/\s+/)[0])||"Ryan";
+  const TPL={
+    inspector:{
+      subject:"Help shape a fair inspection platform — built for inspectors, not against them",
+      body:`Hi there,\n\nMy name is ${me}, and I'm building something called InspectorTrust — a platform meant to bring more transparency to home inspections. Inspectors get an objective Trust Score and a Balance Score based on their reports, buyers and sellers get clear, plain-English summaries of what a report actually means, and there's a public registry so the whole process is less of a black box.\n\nHere's the honest part: I'm not a home inspector. You are. That's exactly why I'm reaching out before any of this is set in stone.\n\nI want the scoring to reward thorough, honest inspectors — and to never punish someone for being detailed or for making a tough but correct call. I'd genuinely value your eyes on how inspectors are evaluated: what's fair, what isn't, and where something might feel biased or just plain wrong to someone who does this work every day.\n\nIf you're open to it, I'd love for you to take a look, join early, and tell me where I'm getting it wrong. Your expertise matters far more here than mine does, and I'd rather get the fairness right than rush it.\n\nThank you for considering it.`,
+    },
+    realtor:{
+      subject:"A home-inspection transparency tool — I'd value a realtor's honest read",
+      body:`Hi there,\n\nMy name is ${me}, and I'm building InspectorTrust — a platform meant to bring more transparency to home inspections. Inspectors get an objective Trust Score and a Balance Score from their reports, buyers and sellers get clear, plain-English summaries of what those reports actually mean, and a public registry makes the whole process less of a black box.\n\nI'm reaching out because you sit between buyers, sellers, and inspectors every day, and you understand those dynamics far better than I do.\n\nMy goal is for this to help your clients trust the inspection process without unfairly favoring any side of the deal. I'd really value your honest read on whether it feels balanced — and where it might unintentionally tilt for or against buyers, sellers, or inspectors.\n\nIf you're willing, take a look, join early, and tell me where I'm getting it wrong. I'd rather hear hard feedback now and get the fairness right than rush it.\n\nThank you for considering it.`,
+    },
+    buyer:{
+      subject:"Making home-inspection reports easier to trust — your input would help",
+      body:`Hi there,\n\nMy name is ${me}, and I'm building InspectorTrust — a platform meant to make home inspections easier to trust. Inspectors get an objective Trust Score and a Balance Score, and buyers like you get clear, plain-English summaries of what an inspection report actually means, plus a public registry to see how an inspector tends to report.\n\nI'm reaching out because you're the person these reports are really for. A home is one of the biggest decisions most people ever make, and inspection reports can be confusing, intimidating, or easy to misread.\n\nI'd love your input on what would actually help you feel informed rather than overwhelmed or misled — and where the platform might be unclear or unintentionally slanted.\n\nIf you're open to it, take a look, join early, and tell me honestly where I'm getting it wrong. Your perspective as a buyer matters more here than mine.\n\nThank you for considering it.`,
+    },
+    seller:{
+      subject:"Fairer, clearer home inspections — I'd value a seller's perspective",
+      body:`Hi there,\n\nMy name is ${me}, and I'm building InspectorTrust — a platform meant to make home inspections clearer and fairer for everyone involved. Inspectors get an objective Trust Score and a Balance Score, buyers and sellers get plain-English summaries of what a report actually means, and a public registry makes the process less of a black box.\n\nI'm reaching out because sellers are often the ones who feel inspection reports the hardest. A single alarmist line can rattle a deal, even when the underlying issue is minor.\n\nI want this to be fair to sellers too — not just a list of scary-sounding findings. I'd really value your perspective on what feels fair, what feels one-sided, and where the platform could do better by people who are selling.\n\nIf you're willing, take a look, join early, and tell me where I'm getting it wrong. I'd rather get the fairness right than rush it.\n\nThank you for considering it.`,
+    },
+  };
+  const [audience,setAudience]=useState("inspector");
+  const [subject,setSubject]=useState(TPL.inspector.subject);
+  const [body,setBody]=useState(TPL.inspector.body);
+  const [emailsRaw,setEmailsRaw]=useState("");
+  const [replyTo,setReplyTo]=useState(session?.profile?.email||"");
+  const [sending,setSending]=useState(false);
+  const [result,setResult]=useState(null);
+
+  const pickAudience=(a)=>{setAudience(a);setSubject(TPL[a].subject);setBody(TPL[a].body);setResult(null);};
+  const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const parsed=emailsRaw.split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean);
+  const valid=[...new Set(parsed.filter(e=>EMAIL_RE.test(e)).map(e=>e.toLowerCase()))];
+  const invalid=parsed.filter(e=>!EMAIL_RE.test(e));
+  const previewParas=body.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
+
+  const send=async(testOnly)=>{
+    const targets=testOnly?[session?.profile?.email].filter(Boolean):valid;
+    if(!subject.trim()||!body.trim()){showToast("Subject and message can't be empty.","error");return;}
+    if(!targets.length){showToast(testOnly?"There's no email on your account to test with.":"Add at least one valid email address.","error");return;}
+    if(!testOnly&&!window.confirm(`Send this ${audience} invitation to ${targets.length} recipient${targets.length>1?"s":""}? Each person gets their own private email.`))return;
+    setSending(true);setResult(null);
+    try{
+      const res=await fetch("/api/outreach",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({emails:targets,subject:subject.trim(),bodyText:body,audience,replyTo:replyTo.trim()||undefined,senderName:session?.profile?.name||me})});
+      const data=await res.json();
+      if(!res.ok){showToast(data.error||"Send failed.","error");setSending(false);return;}
+      setResult(data);
+      showToast(testOnly?"Test email sent to you ✓":`Sent to ${data.sent} of ${data.total} ✓`);
+    }catch{showToast("Network error.","error");}
+    finally{setSending(false);}
+  };
+
+  const audBtn=(a,label)=>{const on=audience===a;return <button key={a} onClick={()=>pickAudience(a)} style={{padding:"10px",borderRadius:8,border:`1.5px solid ${on?C.gold:"#222"}`,background:on?"rgba(200,168,75,0.1)":"#0a0a0a",color:on?C.gold:C.dim,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",textTransform:"capitalize"}}>{label}</button>;};
+
+  return (
+    <div>
+      <div style={{marginBottom:18}}>
+        <h1 style={{fontSize:26,fontWeight:800,color:"#fff",marginBottom:4}}>Invite & gather feedback</h1>
+        <p style={{color:C.dim,fontSize:13,lineHeight:1.6,maxWidth:620}}>Reach out to a realtor, inspector, buyer, or seller — one address or a whole list. Each message explains InspectorTrust and asks for their honest help making it transparent and unbiased. Every recipient gets their own private email; no one sees anyone else's address.</p>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
+        <div style={{display:"grid",gap:14}}>
+          <div style={card}>
+            <div style={cTitle}>Audience</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:4}}>
+              {audBtn("inspector","Inspector")}{audBtn("realtor","Realtor")}{audBtn("buyer","Buyer")}{audBtn("seller","Seller")}
+            </div>
+            <p style={{color:C.faint,fontSize:11,marginTop:10}}>Switching audience loads tailored copy you can freely edit below.</p>
+          </div>
+
+          <div style={card}>
+            <div style={cTitle}>Recipients</div>
+            <label style={lbl}>Email addresses <span style={{color:C.faint}}>(paste one or many — commas, spaces, or new lines)</span></label>
+            <textarea style={{...inp,minHeight:90,resize:"vertical",fontFamily:"monospace",fontSize:12.5}} value={emailsRaw} onChange={e=>setEmailsRaw(e.target.value)} placeholder={"jane@inspections.com\nmike@realty.com"}/>
+            <div style={{display:"flex",gap:12,marginTop:8,fontSize:12,flexWrap:"wrap"}}>
+              <span style={{color:valid.length?C.green:C.dim}}>{valid.length} valid</span>
+              {invalid.length>0&&<span style={{color:C.red}}>{invalid.length} not a valid email</span>}
+              {valid.length>50&&<span style={{color:C.red}}>Max 50 per batch</span>}
+            </div>
+            <div style={{marginTop:12}}>
+              <label style={lbl}>Replies go to</label>
+              <input style={inp} value={replyTo} onChange={e=>setReplyTo(e.target.value)} placeholder="you@email.com"/>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={cTitle}>Message</div>
+            <label style={lbl}>Subject</label>
+            <input style={inp} value={subject} onChange={e=>setSubject(e.target.value)}/>
+            <label style={{...lbl,marginTop:12}}>Body <span style={{color:C.faint}}>(blank line = new paragraph)</span></label>
+            <textarea style={{...inp,minHeight:260,resize:"vertical",lineHeight:1.6}} value={body} onChange={e=>setBody(e.target.value)}/>
+          </div>
+
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button style={bGold} disabled={sending||valid.length===0||valid.length>50} onClick={()=>send(false)}>{sending?<><Spinner/> Sending…</>:`Send to ${valid.length} recipient${valid.length===1?"":"s"} →`}</button>
+            <button style={bGhost} disabled={sending} onClick={()=>send(true)}>Send a test to myself</button>
+          </div>
+
+          {result&&<div style={{...cardSm,borderColor:result.failed?`${C.gold}55`:`${C.green}55`}}>
+            <div style={{fontSize:14,fontWeight:700,color:result.failed?C.gold:C.green,marginBottom:result.failures?.length?8:0}}>✓ Sent {result.sent} of {result.total}{result.failed?` · ${result.failed} failed`:""}</div>
+            {result.failures?.length>0&&<div style={{fontSize:11,color:C.dim,fontFamily:"monospace",lineHeight:1.7,maxHeight:140,overflowY:"auto"}}>{result.failures.map((f,i)=><div key={i}>{f}</div>)}</div>}
+          </div>}
+        </div>
+
+        <div style={card}>
+          <div style={cTitle}>Preview</div>
+          <div style={{background:"#fff",borderRadius:10,padding:"22px 20px",maxHeight:560,overflowY:"auto"}}>
+            <div style={{fontFamily:"Arial,Helvetica,sans-serif",maxWidth:520,margin:"0 auto",color:"#1a1a1a"}}>
+              <div style={{fontSize:11,color:"#999",marginBottom:14,borderBottom:"1px solid #eee",paddingBottom:10}}><strong>Subject:</strong> {subject||<em>(no subject)</em>}</div>
+              <div style={{fontSize:20,fontWeight:800,color:"#0e0e0e",marginBottom:4}}>InspectorTrust</div>
+              <div style={{height:3,width:48,background:"#C8A84B",marginBottom:20}}/>
+              {previewParas.length?previewParas.map((p,i)=><p key={i} style={{margin:"0 0 16px",color:"#333",fontSize:15,lineHeight:1.65}}>{p}</p>):<p style={{color:"#bbb",fontSize:14}}>Your message preview appears here…</p>}
+              <div style={{textAlign:"center",margin:"26px 0"}}><span style={{display:"inline-block",background:"#C8A84B",color:"#0e0e0e",fontWeight:700,fontSize:15,padding:"12px 28px",borderRadius:8}}>Take a look at InspectorTrust →</span></div>
+              <p style={{margin:"0 0 4px",color:"#333",fontSize:15}}>— {session?.profile?.name||me}</p>
+              <p style={{margin:0,color:"#999",fontSize:12,lineHeight:1.5}}>You can reply directly to this email with any thoughts — I read every one.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── SET-NEW-PASSWORD MODAL (shown when arriving from a recovery link) ──
 function ResetPasswordModal({token, onDone, showToast}) {
   const [pw,setPw]=useState("");
@@ -1203,10 +1338,13 @@ export default function App() {
   const viewReport=r=>{setAnalysisResult(r);setEmailSent(false);setView("report");};
   const onTemplateAnalyzed=(nr)=>{setReports(r=>[nr,...r]);setAnalysisResult(nr);setEmailSent(false);setView("report");if(nr.savedToDb&&session?.token)setTimeout(()=>loadRegistryReports(session.token),2000);};
 
-  const role=session?.profile?.role;
+  const realRole=session?.profile?.role;
+  const isAdmin=realRole==="admin";
+  const role=(isAdmin&&session?.profile?.viewAs)?session.profile.viewAs:realRole;
   const isInspector=role==="inspector";
   const navLinks=[
     ["upload","Upload"],
+    ...(isAdmin&&!session?.profile?.viewAs?[["outreach","Outreach"]]:[]),
     ...(isInspector?[["template","Template"]]:[]),
     ["database",`Registry (${reports.length})`],
     ["reports","Reports"],
@@ -1576,7 +1714,8 @@ export default function App() {
 
       {/* ACCOUNT */}
       {view==="terms"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><TermsPage/></main>}
-      {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast} onStatusChange={(s)=>{const ns={...session,profile:{...session.profile,subscription_status:s}};saveSession(ns);setSession(ns);}}/></main>}
+      {view==="outreach"&&(isAdmin?<main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px 80px"}}><AdminOutreachView session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16}}>Admin access required.</p></main>)}
+      {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast} onStatusChange={(s)=>{const ns={...session,profile:{...session.profile,subscription_status:s}};saveSession(ns);setSession(ns);}} onViewAsChange={(r)=>{const ns={...session,profile:{...session.profile,viewAs:r||null}};saveSession(ns);setSession(ns);showToast(r?`Now previewing as ${r}.`:"Restored admin view.");}}/></main>}
 
       {/* DIRECTORY */}
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
