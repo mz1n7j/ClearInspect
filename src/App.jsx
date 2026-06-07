@@ -38,16 +38,13 @@ function BalanceBar({score=50}) {
   const lbl2 = balanced?"BALANCED":pct<35?"BUYER-BIASED":"SELLER-BIASED";
   return (
     <div style={{width:"100%"}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:"monospace",color:C.dim,marginBottom:5}}>
-        <span>◄ Buyer-biased</span><span style={{color:C.green}}>Balanced</span><span>Seller-biased ►</span>
-      </div>
       <div style={{position:"relative",height:10,borderRadius:99,background:`linear-gradient(to right,${C.red} 0%,${C.gold} 30%,${C.green} 45%,${C.green} 55%,${C.gold} 70%,${C.red} 100%)`}}>
-        <div style={{position:"absolute",top:"50%",left:`${pct}%`,transform:"translate(-50%,-50%)",width:18,height:18,borderRadius:"50%",background:color,border:`2.5px solid ${C.base}`,transition:"left 0.7s ease"}}/>
+        <div style={{position:"absolute",top:"50%",left:`${pct}%`,transform:"translate(-50%,-50%)",width:18,height:18,borderRadius:"50%",background:color,border:`2.5px solid ${C.base}`,boxShadow:"0 1px 5px rgba(0,0,0,0.6)",transition:"left 0.7s ease"}}/>
       </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:7}}>
-        <span style={{fontSize:10,color:"#444"}}>Flags cosmetic as major</span>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
+        <span style={{fontSize:10.5,color:"#8a8a8a",fontFamily:"monospace"}}>◄ Buyer-biased</span>
         <span style={{...tag(color),fontSize:10}}>{lbl2}</span>
-        <span style={{fontSize:10,color:"#444"}}>Misses real defects</span>
+        <span style={{fontSize:10.5,color:"#8a8a8a",fontFamily:"monospace"}}>Seller-biased ►</span>
       </div>
     </div>
   );
@@ -834,7 +831,8 @@ function TermsGate({token, view, onAccepted, onSignOut, showToast}) {
 // ── ADMIN OUTREACH (invite + gather feedback by role) ──────────
 function AdminOutreachView({session, showToast}) {
   const me=((session?.profile?.name||"").trim().split(/\s+/)[0])||"Ryan";
-  const TPL={
+  const isAdmin=session?.profile?.role==="admin";
+  const FOUNDER={
     inspector:{
       subject:"Help shape a fair inspection platform — built for inspectors, not against them",
       body:`Hi there,\n\nMy name is ${me}, and I'm building something called InspectorTrust — a platform meant to bring more transparency to home inspections. Inspectors get an objective Trust Score and a Balance Score based on their reports, buyers and sellers get clear, plain-English summaries of what a report actually means, and there's a public registry so the whole process is less of a black box.\n\nHere's the honest part: I'm not a home inspector. You are. That's exactly why I'm reaching out before any of this is set in stone.\n\nI want the scoring to reward thorough, honest inspectors — and to never punish someone for being detailed or for making a tough but correct call. I'd genuinely value your eyes on how inspectors are evaluated: what's fair, what isn't, and where something might feel biased or just plain wrong to someone who does this work every day.\n\nIf you're open to it, I'd love for you to take a look, join early, and tell me where I'm getting it wrong. Your expertise matters far more here than mine does, and I'd rather get the fairness right than rush it.\n\nThank you for considering it.`,
@@ -852,6 +850,25 @@ function AdminOutreachView({session, showToast}) {
       body:`Hi there,\n\nMy name is ${me}, and I'm building InspectorTrust — a platform meant to make home inspections clearer and fairer for everyone involved. Inspectors get an objective Trust Score and a Balance Score, buyers and sellers get plain-English summaries of what a report actually means, and a public registry makes the process less of a black box.\n\nI'm reaching out because sellers are often the ones who feel inspection reports the hardest. A single alarmist line can rattle a deal, even when the underlying issue is minor.\n\nI want this to be fair to sellers too — not just a list of scary-sounding findings. I'd really value your perspective on what feels fair, what feels one-sided, and where the platform could do better by people who are selling.\n\nIf you're willing, take a look, join early, and tell me where I'm getting it wrong. I'd rather get the fairness right than rush it.\n\nThank you for considering it.`,
     },
   };
+  const MEMBER={
+    inspector:{
+      subject:"Thought you'd want to see this — InspectorTrust",
+      body:`Hi there,\n\nI wanted to pass along InspectorTrust — a platform that brings transparency to home inspections. Inspectors get an objective Trust Score and Balance Score from their reports, and there's a public registry where buyers and realtors can find and verify good inspectors.\n\nI thought of you since you work in the field. Getting listed early as a verified inspector could send referrals your way, and I'd be curious what someone who does this daily makes of it.\n\nWorth a look.`,
+    },
+    realtor:{
+      subject:"A tool that might help your clients — InspectorTrust",
+      body:`Hi there,\n\nWanted to share InspectorTrust with you — it scores home inspectors on fairness and balance, and gives buyers and sellers plain-English summaries of what an inspection report actually means.\n\nI thought of you since you work with inspections all the time. It could help your clients trust the process, and being on it early could help you stand out.\n\nWorth a look — curious what you'd think.`,
+    },
+    buyer:{
+      subject:"Something that helps make sense of home inspections",
+      body:`Hi there,\n\nIf you're buying a home (or might be soon), I wanted to share InspectorTrust. It scores home inspectors on fairness and accuracy and translates inspection reports into plain English, so you can tell real problems from cosmetic noise.\n\nIt helped me make more sense of the process, and I thought it might help you too.\n\nWorth a look.`,
+    },
+    seller:{
+      subject:"Worth knowing about before you sell — InspectorTrust",
+      body:`Hi there,\n\nWanted to pass along InspectorTrust. It scores home inspectors on fairness and balance — which matters when you're selling, since a single alarmist line in a report can rattle a deal even when the issue is minor.\n\nThought it might be helpful as you go through the process. Worth a look.`,
+    },
+  };
+  const TPL=isAdmin?FOUNDER:MEMBER;
   const [audience,setAudience]=useState("inspector");
   const [subject,setSubject]=useState(TPL.inspector.subject);
   const [body,setBody]=useState(TPL.inspector.body);
@@ -874,7 +891,7 @@ function AdminOutreachView({session, showToast}) {
     if(!testOnly&&!window.confirm(`Send this ${audience} invitation to ${targets.length} recipient${targets.length>1?"s":""}? Each person gets their own private email.`))return;
     setSending(true);setResult(null);
     try{
-      const res=await fetch("/api/outreach",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({emails:targets,subject:subject.trim(),bodyText:body,audience,replyTo:replyTo.trim()||undefined,senderName:session?.profile?.name||me})});
+      const res=await fetch("/api/outreach",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({emails:targets,subject:subject.trim(),bodyText:body,audience,replyTo:replyTo.trim()||undefined,senderName:session?.profile?.name||undefined})});
       const data=await res.json();
       if(!res.ok){showToast(data.error||"Send failed.","error");setSending(false);return;}
       setResult(data);
@@ -888,8 +905,8 @@ function AdminOutreachView({session, showToast}) {
   return (
     <div>
       <div style={{marginBottom:18}}>
-        <h1 style={{fontSize:26,fontWeight:800,color:"#fff",marginBottom:4}}>Invite & gather feedback</h1>
-        <p style={{color:C.dim,fontSize:13,lineHeight:1.6,maxWidth:620}}>Reach out to a realtor, inspector, buyer, or seller — one address or a whole list. Each message explains InspectorTrust and asks for their honest help making it transparent and unbiased. Every recipient gets their own private email; no one sees anyone else's address.</p>
+        <h1 style={{fontSize:26,fontWeight:800,color:"#fff",marginBottom:4}}>{isAdmin?"Invite & gather feedback":"Spread the word"}</h1>
+        <p style={{color:C.dim,fontSize:13,lineHeight:1.6,maxWidth:620}}>{isAdmin?"Reach out to a realtor, inspector, buyer, or seller — one address or a whole list. Each message explains InspectorTrust and asks for their honest help making it transparent and unbiased. Every recipient gets their own private email; no one sees anyone else's address.":"Know a realtor, inspector, buyer, or seller who'd find InspectorTrust useful? Send them an invite — one address or a whole list. Each person gets their own private email, and replies come straight back to you. Word of mouth is how this grows."}</p>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
@@ -1350,7 +1367,7 @@ export default function App() {
   const isInspector=role==="inspector";
   const navLinks=[
     ["upload","Upload"],
-    ...(isAdmin&&!session?.profile?.viewAs?[["outreach","Outreach"]]:[]),
+    ...(session?[["outreach","Outreach"]]:[]),
     ...(isInspector?[["template","Template"]]:[]),
     ["database",`Registry (${reports.length})`],
     ["reports","Reports"],
@@ -1726,7 +1743,7 @@ export default function App() {
 
       {/* ACCOUNT */}
       {view==="terms"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><TermsPage/></main>}
-      {view==="outreach"&&(isAdmin?<main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px 80px"}}><AdminOutreachView session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16}}>Admin access required.</p></main>)}
+      {view==="outreach"&&(session?<main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px 80px"}}><AdminOutreachView session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to invite others and spread the word.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
       {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast} onStatusChange={(s)=>{const ns={...session,profile:{...session.profile,subscription_status:s}};saveSession(ns);setSession(ns);}} onViewAsChange={(r)=>{const ns={...session,profile:{...session.profile,viewAs:r||null}};saveSession(ns);setSession(ns);showToast(r?`Now previewing as ${r}.`:"Restored admin view.");}}/></main>}
 
       {/* DIRECTORY */}
