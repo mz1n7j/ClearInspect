@@ -48,8 +48,7 @@ module.exports = async function handler(req, res) {
   const replyAddr = (replyTo && EMAIL_RE.test(String(replyTo).trim())) ? String(replyTo).trim() : userEmail;
 
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;">
-    <div style="font-size:20px;font-weight:800;color:#0e0e0e;margin-bottom:4px;">InspectorTrust</div>
-    <div style="height:3px;width:48px;background:#C8A84B;margin-bottom:20px;"></div>
+    <div style="margin-bottom:18px;"><img src="${safe(SITE_URL)}/inspectortrust-logo.png" alt="InspectorTrust" width="120" style="display:block;border:0;outline:none;"></div>
     ${bodyHtml}
     <div style="text-align:center;margin:26px 0;">
       <a href="${safe(SITE_URL)}" style="display:inline-block;background:#C8A84B;color:#0e0e0e;text-decoration:none;font-weight:700;font-size:15px;padding:12px 28px;border-radius:8px;">Take a look at InspectorTrust &rarr;</a>
