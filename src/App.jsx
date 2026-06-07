@@ -828,6 +828,120 @@ function TermsGate({token, view, onAccepted, onSignOut, showToast}) {
   );
 }
 
+// ── ADMIN INSIGHTS (engagement KPIs) ──────────────────────────
+function AdminMetricsView({session, showToast}) {
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState("");
+  const [sortBy,setSortBy]=useState("recent");
+  useEffect(()=>{(async()=>{
+    try{
+      const res=await fetch("/api/metrics",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({action:"kpis"})});
+      const d=await res.json();
+      if(!res.ok){setErr(d.error||"Could not load insights.");setLoading(false);return;}
+      setData(d);setLoading(false);
+    }catch{setErr("Network error loading insights.");setLoading(false);}
+  })();},[]);
+
+  const fmtDur=(s)=>{if(!s)return "—";const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=Math.round(s%60);if(h)return `${h}h ${m}m`;if(m)return `${m}m ${x}s`;return `${x}s`;};
+  const fmtDate=(iso)=>{if(!iso)return "—";try{return new Date(iso).toLocaleDateString([],{month:"short",day:"numeric",year:"2-digit"});}catch{return "—";}};
+  const fmtWhen=(iso)=>{if(!iso)return "Never";try{const days=Math.floor((Date.now()-new Date(iso).getTime())/864e5);if(days<=0)return "Today";if(days===1)return "Yesterday";if(days<30)return `${days}d ago`;return fmtDate(iso);}catch{return "—";}};
+  const perWeek=(u)=>{if(!u.created_at||!u.login_count)return "—";const wk=Math.max(1,(Date.now()-new Date(u.created_at).getTime())/(7*864e5));return (u.login_count/wk).toFixed(1);};
+
+  if(loading)return <div style={{textAlign:"center",padding:"60px 0",color:C.dim}}><Spinner/> <span style={{marginLeft:8}}>Loading insights…</span></div>;
+  if(err)return <div style={{...cardSm,color:C.red}}>{err}</div>;
+
+  const customers=(data.users||[]).filter(u=>u.role!=="admin");
+  const lastActive=(u)=>u.last_seen_at||u.last_login_at;
+  const now=Date.now(), D=864e5;
+  const active7=customers.filter(u=>{const a=lastActive(u);return a&&(now-new Date(a).getTime())<=7*D;}).length;
+  const active30=customers.filter(u=>{const a=lastActive(u);return a&&(now-new Date(a).getTime())<=30*D;}).length;
+  const totalOutreach=customers.reduce((s,u)=>s+(u.outreach_sent||0),0);
+  const totalLogins=customers.reduce((s,u)=>s+(u.login_count||0),0);
+  const totalActive=customers.reduce((s,u)=>s+(u.active_seconds||0),0);
+  const overallAvg=totalLogins?Math.round(totalActive/totalLogins):0;
+  const advocates=customers.filter(u=>u.outreach_sent>0).sort((a,b)=>b.outreach_sent-a.outreach_sent);
+  const sorters={
+    recent:(a,b)=>new Date(lastActive(b)||0)-new Date(lastActive(a)||0),
+    logins:(a,b)=>b.login_count-a.login_count,
+    session:(a,b)=>b.avg_session_seconds-a.avg_session_seconds,
+    reports:(a,b)=>b.reports_count-a.reports_count,
+    outreach:(a,b)=>b.outreach_sent-a.outreach_sent,
+    newest:(a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0),
+  };
+  const sorted=[...customers].sort(sorters[sortBy]||sorters.recent);
+
+  const Tile=({label,value,sub,color})=>(<div style={cardSm}><div style={{fontSize:10.5,color:C.dim,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"monospace"}}>{label}</div><div style={{fontSize:26,fontWeight:800,color:color||"#fff",lineHeight:1}}>{value}</div>{sub&&<div style={{fontSize:11,color:C.dim,marginTop:5}}>{sub}</div>}</div>);
+  const th={textAlign:"left",fontSize:10.5,color:C.dim,fontWeight:700,fontFamily:"monospace",textTransform:"uppercase",letterSpacing:"0.04em",padding:"8px 10px",borderBottom:`1px solid ${C.border2}`,whiteSpace:"nowrap"};
+  const td={fontSize:12.5,color:C.text,padding:"9px 10px",borderBottom:"1px solid #161616",whiteSpace:"nowrap"};
+
+  return (
+    <div>
+      <div style={{marginBottom:18}}>
+        <h1 style={{fontSize:26,fontWeight:800,color:"#fff",marginBottom:4}}>Insights</h1>
+        <p style={{color:C.dim,fontSize:13,lineHeight:1.6,maxWidth:640}}>Engagement across your customer accounts. The advocates table surfaces the people spreading the word by email — those are the ones worth recognizing.</p>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:22}}>
+        <Tile label="Customers" value={customers.length} sub="distinct accounts"/>
+        <Tile label="Active · 7d" value={active7} sub={`${active30} in last 30d`} color={C.green}/>
+        <Tile label="Outreach sent" value={totalOutreach} sub="invite emails" color={C.gold}/>
+        <Tile label="Total logins" value={totalLogins}/>
+        <Tile label="Avg session" value={fmtDur(overallAvg)} sub="per login"/>
+      </div>
+
+      <div style={{...card,marginBottom:22}}>
+        <div style={{...cTitle,color:C.gold}}>🏆 Top advocates · word of mouth</div>
+        {advocates.length===0
+          ? <p style={{color:C.dim,fontSize:13}}>No outreach emails sent yet. Once customers start inviting others, your biggest advocates rank here.</p>
+          : <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr><th style={th}>#</th><th style={th}>Customer</th><th style={th}>Role</th><th style={th}>Invites sent</th><th style={th}>Batches</th><th style={th}>Last active</th></tr></thead>
+              <tbody>{advocates.map((u,i)=>(
+                <tr key={u.email} style={i<3?{background:"rgba(200,168,75,0.05)"}:undefined}>
+                  <td style={{...td,color:i<3?C.gold:C.dim,fontWeight:700}}>{i+1}</td>
+                  <td style={td}><div style={{color:"#fff",fontWeight:600}}>{u.name||"—"}</div><div style={{color:C.dim,fontSize:11}}>{u.email}</div></td>
+                  <td style={td}><span style={{...tag(C.blue),fontSize:10,textTransform:"capitalize"}}>{u.role||"—"}</span></td>
+                  <td style={{...td,color:C.gold,fontWeight:700}}>{u.outreach_sent}</td>
+                  <td style={td}>{u.outreach_batches}</td>
+                  <td style={{...td,color:C.dim}}>{fmtWhen(lastActive(u))}</td>
+                </tr>))}
+              </tbody></table></div>}
+      </div>
+
+      <div style={card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,marginBottom:12}}>
+          <div style={{...cTitle,marginBottom:0}}>All customers ({customers.length})</div>
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...inp,width:"auto",padding:"7px 10px",fontSize:12}}>
+            <option value="recent">Sort: Most recent activity</option>
+            <option value="logins">Sort: Most logins</option>
+            <option value="session">Sort: Longest avg session</option>
+            <option value="outreach">Sort: Most outreach</option>
+            <option value="reports">Sort: Most reports</option>
+            <option value="newest">Sort: Newest signup</option>
+          </select>
+        </div>
+        {customers.length===0
+          ? <p style={{color:C.dim,fontSize:13}}>No customer accounts yet.</p>
+          : <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr><th style={th}>Customer</th><th style={th}>Role</th><th style={th}>Joined</th><th style={th}>Logins</th><th style={th}>/wk</th><th style={th}>Avg session</th><th style={th}>Outreach</th><th style={th}>Reports</th><th style={th}>Last active</th></tr></thead>
+              <tbody>{sorted.map(u=>(
+                <tr key={u.email}>
+                  <td style={td}><div style={{color:"#fff",fontWeight:600}}>{u.name||"—"}</div><div style={{color:C.dim,fontSize:11}}>{u.email}</div></td>
+                  <td style={td}><span style={{...tag(C.muted),fontSize:10,textTransform:"capitalize"}}>{u.role||"—"}</span></td>
+                  <td style={{...td,color:C.dim}}>{fmtDate(u.created_at)}</td>
+                  <td style={td}>{u.login_count}</td>
+                  <td style={{...td,color:C.dim}}>{perWeek(u)}</td>
+                  <td style={td}>{fmtDur(u.avg_session_seconds)}</td>
+                  <td style={{...td,color:u.outreach_sent?C.gold:C.dim}}>{u.outreach_sent}</td>
+                  <td style={td}>{u.reports_count}</td>
+                  <td style={{...td,color:C.dim}}>{fmtWhen(lastActive(u))}</td>
+                </tr>))}
+              </tbody></table></div>}
+      </div>
+    </div>
+  );
+}
+
 // ── ADMIN OUTREACH (invite + gather feedback by role) ──────────
 function AdminOutreachView({session, showToast}) {
   const me=((session?.profile?.name||"").trim().split(/\s+/)[0])||"Ryan";
@@ -1052,6 +1166,16 @@ export default function App() {
   const fileRef=useRef();
   const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
   const [missing,setMissing]=useState({});
+
+  // Session heartbeat — accrues active time for the Insights page (only while the tab is visible)
+  useEffect(()=>{
+    if(!session?.token) return;
+    const ping=()=>{ if(document.visibilityState==="visible"){ fetch("/api/metrics",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.token}`},body:JSON.stringify({action:"ping"})}).catch(()=>{}); } };
+    ping();
+    const id=setInterval(ping,60000);
+    document.addEventListener("visibilitychange",ping);
+    return ()=>{clearInterval(id);document.removeEventListener("visibilitychange",ping);};
+  },[session?.token]);
 
   useEffect(()=>{
     const s=getSession();
@@ -1368,6 +1492,7 @@ export default function App() {
   const navLinks=[
     ["upload","Upload"],
     ...(session?[["outreach","Outreach"]]:[]),
+    ...(isAdmin&&!session?.profile?.viewAs?[["metrics","Insights"]]:[]),
     ...(isInspector?[["template","Template"]]:[]),
     ["database",`Registry (${reports.length})`],
     ["reports","Reports"],
@@ -1743,6 +1868,7 @@ export default function App() {
 
       {/* ACCOUNT */}
       {view==="terms"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><TermsPage/></main>}
+      {view==="metrics"&&(isAdmin?<main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px 80px"}}><AdminMetricsView session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16}}>Admin access required.</p></main>)}
       {view==="outreach"&&(session?<main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px 80px"}}><AdminOutreachView session={session} showToast={showToast}/></main>:<main style={{maxWidth:960,margin:"0 auto",padding:"60px 16px",textAlign:"center"}}><p style={{color:C.dim,fontSize:16,marginBottom:20}}>Sign in to invite others and spread the word.</p><button style={bGold} onClick={()=>setShowAuth(true)}>Sign In →</button></main>)}
       {view==="account"&&session&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}><AccountPage profile={session.profile} token={session.token} showToast={showToast} onStatusChange={(s)=>{const ns={...session,profile:{...session.profile,subscription_status:s}};saveSession(ns);setSession(ns);}} onViewAsChange={(r)=>{const ns={...session,profile:{...session.profile,viewAs:r||null}};saveSession(ns);setSession(ns);showToast(r?`Now previewing as ${r}.`:"Restored admin view.");}}/></main>}
 
