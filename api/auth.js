@@ -121,6 +121,7 @@ module.exports = async function handler(req, res) {
               to: email,
               subject: "Reset your InspectorTrust password",
               html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;">
+                <div style="margin-bottom:16px;"><img src="${SITE_URL}/inspectortrust-logo.png" alt="InspectorTrust" width="110" style="display:block;border:0;outline:none;"></div>
                 <h2 style="margin:0 0 8px;">Reset your password</h2>
                 <p style="color:#444;font-size:14px;line-height:1.6;">We received a request to reset the password for your InspectorTrust account. Click the button below to choose a new password. If you didn't request this, you can safely ignore this email.</p>
                 <div style="text-align:center;margin:24px 0;">
