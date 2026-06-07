@@ -71,5 +71,16 @@ module.exports = async function handler(req, res) {
     await new Promise(r => setTimeout(r, 300));
   }
 
+  // Best-effort: record outreach activity for the Insights page.
+  try {
+    const pr = await fetch(`${SB}/rest/v1/profiles?id=eq.${userId}&select=outreach_sent,outreach_batches`, { headers: { apikey: SK, Authorization: `Bearer ${SK}` } });
+    const p = (await pr.json())[0] || {};
+    await fetch(`${SB}/rest/v1/profiles?id=eq.${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", apikey: SK, Authorization: `Bearer ${SK}`, Prefer: "return=minimal" },
+      body: JSON.stringify({ outreach_sent: (p.outreach_sent || 0) + sent.length, outreach_batches: (p.outreach_batches || 0) + 1 }),
+    });
+  } catch (e) { console.error("outreach metric error:", e.message); }
+
   return res.status(200).json({ sent: sent.length, failed: failed.length, failures: failed, total: clean.length });
 };
