@@ -80,6 +80,17 @@ module.exports = async function handler(req, res) {
       );
       const profiles = await profileRes.json();
       let profile = profiles[0] || null;
+      // Best-effort engagement metrics (never block login on failure)
+      if (profile && userId) {
+        try {
+          const nowIso = new Date().toISOString();
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Prefer": "return=minimal" },
+            body: JSON.stringify({ login_count: (profile.login_count || 0) + 1, session_count: (profile.session_count || 0) + 1, last_login_at: nowIso, last_seen_at: nowIso }),
+          });
+        } catch (e) { console.error("login metric error:", e.message); }
+      }
       return res.status(200).json({ session: { access_token: accessToken }, profile });
     }
     if (action === "accept_terms") {
