@@ -113,6 +113,7 @@ module.exports = async function handler(req, res) {
       const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://inspectortrust.com";
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
       const EMAIL_FROM = process.env.EMAIL_FROM;
+      const FEEDBACK_EMAIL = process.env.FEEDBACK_EMAIL || "inspectortrustfeedback@gmail.com";
       if (!email) return res.status(400).json({ error: "Email is required." });
       try {
         // Supabase mints a secure recovery link (no email sent by Supabase); we email it ourselves.
@@ -130,6 +131,7 @@ module.exports = async function handler(req, res) {
             body: JSON.stringify({
               from: EMAIL_FROM,
               to: email,
+              reply_to: FEEDBACK_EMAIL,
               subject: "Reset your InspectorTrust password",
               html: `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;">
                 <div style="margin-bottom:16px;"><img src="${SITE_URL}/inspectortrust-logo.png" alt="InspectorTrust" width="110" style="display:block;border:0;outline:none;"></div>
