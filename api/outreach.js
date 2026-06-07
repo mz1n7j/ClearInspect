@@ -24,13 +24,7 @@ module.exports = async function handler(req, res) {
     userId = ud.id; userEmail = (ud.email || "").toLowerCase();
   } catch (e) { console.error("outreach auth error:", e.message); return res.status(401).json({ error: "Could not verify session." }); }
 
-  // …and require admin.
-  let role = null;
-  try {
-    const pr = await fetch(`${SB}/rest/v1/profiles?id=eq.${userId}&select=role`, { headers: { apikey: SK, Authorization: `Bearer ${SK}` } });
-    if (pr.ok) { const pj = await pr.json(); role = pj[0]?.role || null; }
-  } catch (e) { console.error("outreach role lookup error:", e.message); }
-  if (role !== "admin") return res.status(403).json({ error: "Admin access required." });
+  // Any signed-in user may send invites (word-of-mouth growth). Replies route back to the sender.
 
   const { emails, subject, bodyText, replyTo, senderName } = req.body || {};
   if (!subject || !bodyText) return res.status(400).json({ error: "Subject and message are required." });
