@@ -1787,12 +1787,11 @@ const isInspector=role==="inspector";
                         {analyzed
                           ? (a.summary?<p style={{color:"#777",fontSize:12,lineHeight:1.6,marginBottom:10,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{a.summary.slice(0,120)}…</p>:null)
                           : <p style={{color:C.dim,fontSize:12,lineHeight:1.6,marginBottom:10,fontStyle:"italic"}}>Analysis in progress — the grade appears once it finishes.</p>}
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          {analyzed&&a.fraudRisk&&a.fraudRisk!=="Unknown"&&<span style={tag(a.fraudRisk==="High"?C.red:a.fraudRisk==="Moderate"?C.gold:C.green)}>{a.fraudRisk} Risk</span>}
-                          <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:"auto"}}>
-<DisputeButton report={r} session={session} role={role} disputing={disputingIds.has(String(r.id))} onFiled={()=>loadDisputes(session?.token)} showToast={showToast}/>
-                            <ShareToEmailButton report={r} session={session} showToast={showToast}/>                            <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
-                          </div>
+                <div style={{display:"flex",flexWrap:"wrap",justifyContent:"center",alignItems:"center",gap:8,marginTop:4}}>
+                          {analyzed&&a.fraudRisk&&a.fraudRisk!=="Unknown"&&<span style={{...tag(a.fraudRisk==="High"?C.red:a.fraudRisk==="Moderate"?C.gold:C.green),whiteSpace:"nowrap"}}>{a.fraudRisk} Risk</span>}
+                          <DisputeButton report={r} session={session} role={role} disputing={disputingIds.has(String(r.id))} onFiled={()=>loadDisputes(session?.token)} showToast={showToast}/>
+                          <ShareToEmailButton report={r} session={session} showToast={showToast}/>
+                          <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit",whiteSpace:"nowrap",padding:"5px 4px"}} onClick={()=>viewReport(r)}>Full Review →</button>
                         </div>
                         {(r.canFlag||r.impactedSale)&&(
                           <div style={{marginTop:8}}>
