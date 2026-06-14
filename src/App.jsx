@@ -1935,7 +1935,7 @@ function ShareToEmailButton({report,session,showToast}){
 
   return (
     <>
-      <button title="Email a secure link to this report" onClick={e=>{e.stopPropagation();setOpen(true);}} style={{...bGhost,fontSize:12,padding:"4px 10px",gap:6}}>✉ Send</button>
+      <button title="Email a secure link to this report" onClick={e=>{e.stopPropagation();setOpen(true);}} style={{...bGhost,fontSize:12,padding:"5px 10px",gap:6,whiteSpace:"nowrap"}}>✉ Send</button>
       {open&&(
         <div style={mOv} onClick={e=>{e.stopPropagation();setOpen(false);}}>
           <div style={{...mBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
