@@ -1145,7 +1145,7 @@ export default function App() {
   const [sharedError,setSharedError]=useState("");
   const [registrySearch,setRegistrySearch]=useState("");
   const [propertyData,setPropertyData]=useState(null);
-  const [lookingUp,setLookingUp]=useState(false);   const [disputingIds,setDisputingIds]=useState(()=>new Set());    const loadDisputes=async(token)=>{     const t=token||session?.token;     if(!t)return;     try{       const res=await fetch("/api/disputes",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${t}`},body:JSON.stringify({action:"active"})});       const data=await res.json();       if(res.ok&&Array.isArray(data.reportIds))setDisputingIds(new Set(data.reportIds.map(String)));     }catch(e){console.error("Failed to load disputes:",e);}   };
+  const [lookingUp,setLookingUp]=useState(false);   const [disputingIds,setDisputingIds]=useState(()=>new Set());   const [modifiedGrades,setModifiedGrades]=useState(()=>new Map());   const [modifiedGrades,setModifiedGrades]=useState(()=>new Map());    const loadDisputes=async(token)=>{     const t=token||session?.token;     if(!t)return;     try{       const res=await fetch("/api/disputes",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${t}`},body:JSON.stringify({action:"active"})});       const data=await res.json();       if(res.ok){setDisputingIds(new Set((data.reportIds||[]).map(String)));setModifiedGrades(new Map(Object.entries(data.modifiedGrades||{})));}     }catch(e){console.error("Failed to load disputes:",e);}   };
 
   const lookupProperty=async(street,city,state,zip)=>{
     if(!street||!city||!state)return;
