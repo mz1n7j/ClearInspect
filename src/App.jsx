@@ -1493,8 +1493,10 @@ export default function App() {
   const realRole=session?.profile?.role;
   const isAdmin=realRole==="admin";
   const role=(isAdmin&&session?.profile?.viewAs)?session.profile.viewAs:realRole;
-  const isInspector=role==="inspector";
+const isInspector=role==="inspector";
+  const isAnalyst=role==="dispute_analyst";
   const navLinks=[
+    ...((isAdmin||isAnalyst)?[["disputes","Disputes"]]:[]),
     ["upload","Upload"],
     ...(session?[["outreach","Outreach"]]:[]),
     ...(isAdmin&&!session?.profile?.viewAs?[["metrics","Insights"]]:[]),
