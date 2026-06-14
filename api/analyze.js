@@ -185,10 +185,11 @@ let parsed;
 
       // Save initial record
       const saved = await sbPost("inspection_reports", {
-        inspector_name: inspectorName||"Unknown",
+      inspector_name: inspectorName||"Unknown",
         company_name: companyName||null,
         license_no: licenseNo||null,
         property_address: propertyAddress||null,
+        inspection_date: normalizeDate(inspectionDate) || null,
         submitted_by: userId,
         buyer_email: buyerEmail||null,
         seller_email: sellerEmail||null,
