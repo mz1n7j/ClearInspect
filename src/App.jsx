@@ -1169,7 +1169,7 @@ export default function App() {
     finally{setLookingUp(false);}
   };
   const fileRef=useRef();
-  const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
+  const [form,setForm]=useState({inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",inspectionDate:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",reportText:"",fileName:""});
   const [missing,setMissing]=useState({});
 
   // Session heartbeat — accrues active time for the Insights page (only while the tab is visible)
