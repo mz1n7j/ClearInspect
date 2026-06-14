@@ -130,8 +130,9 @@ FIELD RULES:
 - licenseNo: Look for "License #", "TREC #", "HI-", "Lic.", "Cert. #", "CPI#"
 - street/city/state/zip: INSPECTED PROPERTY address only. state = 2-letter abbreviation.
 - buyerEmail/sellerEmail/realtorEmail: Only if explicitly labeled.
+- inspectionDate: The date the inspection was PERFORMED (look for "Date of Inspection", "Inspection Date", "Inspected on", or a date near the top of the report). Return as YYYY-MM-DD. This is NOT today's date and NOT the report-generated date — only a date clearly tied to when the inspection happened.
 
-Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":""}`,
+Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":"","inspectionDate":""}`,
         `Extract from this inspection report:\n\n${metaText}`
       );
       let parsed;
