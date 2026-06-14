@@ -1777,7 +1777,9 @@ const isInspector=role==="inspector";
                             <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.inspectorName}</div>
                             <div style={{color:C.dim,fontSize:12}}>{r.companyName||"Independent"} · {r.date}</div>
                           </div>
-                          {analyzed
+                      {disputingIds.has(String(r.id))
+                            ? <span style={{...tag(C.blue),fontSize:13,fontWeight:800,padding:"3px 12px"}}>Disputing</span>
+                            : analyzed
                             ? <span style={{...tag(gc),fontSize:16,fontWeight:800,padding:"3px 12px",fontFamily:"monospace"}}>{grade}</span>
                             : <span style={{...tag(C.gold),fontSize:10,fontWeight:700,padding:"4px 10px",whiteSpace:"nowrap"}}>⋯ Work in Progress</span>}
                         </div>
