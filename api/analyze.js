@@ -135,15 +135,16 @@ FIELD RULES:
 Return exactly: {"inspectorName":"","companyName":"","licenseNo":"","street":"","city":"","state":"","zip":"","buyerEmail":"","sellerEmail":"","realtorEmail":"","inspectionDate":""}`,
         `Extract from this inspection report:\n\n${metaText}`
       );
-      let parsed;
+let parsed;
       try { parsed = parseJSON(raw); }
-      catch { parsed = { inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"" }; }
+      catch { parsed = { inspectorName:"",companyName:"",licenseNo:"",street:"",city:"",state:"",zip:"",buyerEmail:"",sellerEmail:"",realtorEmail:"",inspectionDate:"" }; }
       const cleaned = Object.fromEntries(
         Object.entries(parsed).map(([k,v]) => {
           const s = String(v||"").trim();
           return [k, ["Unknown","N/A","n/a","null","none"].includes(s) ? "" : s];
         })
       );
+      cleaned.inspectionDate = normalizeDate(cleaned.inspectionDate);
 
       // Fallback: model found a license number but no inspector name — resolve
       // the name from TREC's public dataset (Texas inspectors).
