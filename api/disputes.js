@@ -12,8 +12,8 @@
 //      is no reports-table name to guess.
 //
 // Actions (all POST, body = JSON):
-//   { action:"file",    reportId, reason, inspectorName?, propertyAddress?, grade? }  -> inspector/admin
-//   { action:"active" }                                                               -> any signed-in user
+//   { action:"file",    reportId, reason, requestedGrade, inspectorName?, propertyAddress?, grade? } -> inspector/admin
+//   { action:"active" }  -> any signed-in user; returns { reportIds, modifiedGrades }
 //   { action:"list",    status? }                                                     -> dispute_analyst/admin
 //   { action:"resolve", disputeId, decision:"approved"|"rejected", note? }            -> dispute_analyst/admin
 
@@ -107,8 +107,10 @@ module.exports = async (req, res) => {
       }
       const reportId = body.reportId;
       const reason = (body.reason || "").trim();
+      const requestedGrade = (body.requestedGrade || "").trim().toUpperCase();
       if (!reportId) { res.status(400).json({ error: "Missing reportId." }); return; }
       if (!reason)  { res.status(400).json({ error: "A reason is required." }); return; }
+      if (!requestedGrade) { res.status(400).json({ error: "Propose the grade you believe is fair." }); return; }
 
       // Block a duplicate while one is already pending for this report.
       const existing = await fetch(
@@ -126,6 +128,7 @@ module.exports = async (req, res) => {
         inspector_name: body.inspectorName || null,
         property_address: body.propertyAddress || null,
         grade: body.grade || null,
+        requested_grade: requestedGrade,
         reason,
         status: "pending",
         filed_by: profile?.id || user.id,
@@ -150,13 +153,27 @@ module.exports = async (req, res) => {
     // ── ACTIVE: report_ids that currently have a pending dispute ────────────
     // Any signed-in user may read this so grades can render "Disputing".
     if (action === "active") {
+      // Pending disputes -> report_ids that should render as "Disputing".
       const r = await fetch(
         `${REST}/disputes?status=eq.pending&select=report_id`,
         { headers: svcHeaders() }
       );
       const rows = r.ok ? await r.json() : [];
       const reportIds = Array.from(new Set((rows || []).map((x) => String(x.report_id))));
-      res.status(200).json({ reportIds });
+
+      // Approved disputes that carry a proposed grade -> per-report "Modified
+      // Grade". The original report grade is never changed; this is an overlay.
+      const ar = await fetch(
+        `${REST}/disputes?status=eq.approved&requested_grade=not.is.null&select=report_id,requested_grade,created_at&order=created_at.desc`,
+        { headers: svcHeaders() }
+      );
+      const arows = ar.ok ? await ar.json() : [];
+      const modifiedGrades = {};
+      for (const x of (arows || [])) {
+        const k = String(x.report_id);
+        if (!(k in modifiedGrades) && x.requested_grade) modifiedGrades[k] = x.requested_grade; // first = most recent
+      }
+      res.status(200).json({ reportIds, modifiedGrades });
       return;
     }
 
@@ -213,9 +230,10 @@ module.exports = async (req, res) => {
         return;
       }
       const updated = await upd.json();
-      // NOTE: resolving (either way) just clears the "Disputing" state and the
-      // grade returns. Approving does NOT auto-change or remove the grade — that
-      // regrade/removal behavior is a deliberate follow-up if you want it.
+      // NOTE: the original AI grade is never modified. An APPROVED dispute that
+      // carries a requested_grade becomes that report's "Modified Grade" overlay
+      // (surfaced via the "active" action's modifiedGrades map). Rejecting changes
+      // nothing. Resolving either way clears the "Disputing" state.
       res.status(200).json({ success: true, dispute: updated[0] || null });
       return;
     }
