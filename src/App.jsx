@@ -1790,8 +1790,8 @@ const isInspector=role==="inspector";
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                           {analyzed&&a.fraudRisk&&a.fraudRisk!=="Unknown"&&<span style={tag(a.fraudRisk==="High"?C.red:a.fraudRisk==="Moderate"?C.gold:C.green)}>{a.fraudRisk} Risk</span>}
                           <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:"auto"}}>
-                            <ShareToEmailButton report={r} session={session} showToast={showToast}/>
-                            <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
+<DisputeButton report={r} session={session} role={role} disputing={disputingIds.has(String(r.id))} onFiled={()=>loadDisputes(session?.token)} showToast={showToast}/>
+                            <ShareToEmailButton report={r} session={session} showToast={showToast}/>                            <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}} onClick={()=>viewReport(r)}>Full Review →</button>
                           </div>
                         </div>
                         {(r.canFlag||r.impactedSale)&&(
