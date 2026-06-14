@@ -34,12 +34,27 @@ export function DisputeButton({report,session,role,disputing,onFiled,showToast})
   const [open,setOpen]=useState(false);
   const [reason,setReason]=useState("");
   const [sending,setSending]=useState(false);
-  const isInspector=role==="inspector"||role==="admin";
+  const profile=session?.profile;
+  const isAdmin=role==="admin";
   const isSaved=report?.id&&String(report.id).includes("-");
   const grade=report?.analysis?.inspectorGrade||report?.analysis?.inspector_grade||null;
-  // Only inspectors (admins for testing) can file, only on a saved report that
-  // has a grade and isn't already being disputed.
-  if(!isInspector||!isSaved||!grade||disputing)return null;
+
+  // Normalize a license number for comparison (strip punctuation/spaces, uppercase).
+  const normLic=v=>String(v||"").replace(/[^a-z0-9]/gi,"").toUpperCase();
+  const reportLic=normLic(report?.licenseNo||report?.license_no);
+  const myLic=normLic(profile?.license_number);
+  const reportSubmitter=report?.submittedBy||report?.submitted_by||null;
+
+  // Admin: any graded report, anytime. Inspector: only a report THEY uploaded
+  // whose license number matches their own inspector license.
+  const inspectorCanDispute =
+    role==="inspector" &&
+    !!myLic && !!reportLic && myLic===reportLic &&
+    !!profile?.id && reportSubmitter===profile.id;
+
+  const canDispute = isAdmin || inspectorCanDispute;
+  // Only on a saved report that has a grade and isn't already being disputed.
+  if(!canDispute||!isSaved||!grade||disputing)return null;
 
   const submit=async()=>{
     if(!reason.trim()){showToast&&showToast("Please explain why you're disputing this grade.","error");return;}
