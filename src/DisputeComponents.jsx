@@ -33,6 +33,7 @@ function Spinner({lg}) {
 export function DisputeButton({report,session,role,disputing,onFiled,showToast}){
   const [open,setOpen]=useState(false);
   const [reason,setReason]=useState("");
+  const [requestedGrade,setRequestedGrade]=useState("");
   const [sending,setSending]=useState(false);
   const profile=session?.profile;
   const isAdmin=role==="admin";
@@ -58,6 +59,7 @@ export function DisputeButton({report,session,role,disputing,onFiled,showToast})
 
   const submit=async()=>{
     if(!reason.trim()){showToast&&showToast("Please explain why you're disputing this grade.","error");return;}
+    if(!requestedGrade){showToast&&showToast("Choose the grade you believe is fair.","error");return;}
     if(!session?.token){showToast&&showToast("Sign in to dispute.","error");return;}
     setSending(true);
     try{
@@ -71,12 +73,13 @@ export function DisputeButton({report,session,role,disputing,onFiled,showToast})
           inspectorName:report.inspectorName||report.inspector_name||null,
           propertyAddress:report.propertyAddress||report.property_address||null,
           grade,
+          requestedGrade,
         }),
       });
       const data=await res.json();
       if(!res.ok)throw new Error(data.error||"Could not file dispute.");
       showToast&&showToast("Dispute submitted — the grade now shows as Disputing while it's reviewed.");
-      setReason("");setOpen(false);
+      setReason("");setRequestedGrade("");setOpen(false);
       onFiled&&onFiled();
     }catch(e){showToast&&showToast(e.message,"error");}
     finally{setSending(false);}
@@ -84,7 +87,7 @@ export function DisputeButton({report,session,role,disputing,onFiled,showToast})
 
   return (
     <>
-      <button onClick={e=>{e.stopPropagation();setOpen(true);}} title="Dispute this grade" style={{...bGhost,fontSize:12,padding:"6px 12px",borderColor:`${C.blue}66`,color:C.blue}}>⚖ Dispute</button>
+      <button onClick={e=>{e.stopPropagation();setOpen(true);}} title="Dispute this grade" style={{...bGhost,fontSize:12,padding:"5px 10px",borderColor:`${C.blue}66`,color:C.blue,whiteSpace:"nowrap"}}>⚖ Dispute</button>
       {open&&(
         <div style={mOv} onClick={e=>{e.stopPropagation();setOpen(false);}}>
           <div style={{...mBox,maxWidth:440}} onClick={e=>e.stopPropagation()}>
@@ -97,6 +100,15 @@ export function DisputeButton({report,session,role,disputing,onFiled,showToast})
             </p>
             <label style={lbl}>Why is this grade inaccurate?</label>
             <textarea style={{...inp,minHeight:120,resize:"vertical",lineHeight:1.6}} placeholder="Explain what the analysis got wrong, with any context an analyst should weigh…" value={reason} onChange={e=>setReason(e.target.value)}/>
+            <label style={{...lbl,marginTop:14}}>What grade do you believe is fair?</label>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {["A","B","C","D","F"].map(g=>{
+                const on=requestedGrade===g;
+                const gc=g==="A"?C.green:g==="B"?C.gold:g==="C"?"#e67e22":C.red;
+                return <button key={g} type="button" onClick={()=>setRequestedGrade(g)} style={{flex:1,minWidth:48,padding:"10px 0",borderRadius:8,border:`1.5px solid ${on?gc:"#222"}`,background:on?`${gc}1f`:"#0a0a0a",color:on?gc:C.dim,cursor:"pointer",fontSize:16,fontWeight:800,fontFamily:"monospace"}}>{g}</button>;
+              })}
+            </div>
+            <p style={{color:C.faint,fontSize:11,marginTop:8,lineHeight:1.5}}>If approved, this becomes a separate <strong style={{color:C.muted}}>Modified Grade</strong> — your original grade is never changed.</p>
             <button onClick={submit} disabled={sending} style={{...bGold,width:"100%",justifyContent:"center",marginTop:14,opacity:sending?0.7:1}}>{sending?<><Spinner/> Submitting…</>:"Submit dispute →"}</button>
           </div>
         </div>
@@ -142,7 +154,7 @@ export function DisputesQueue({session, showToast, onChanged}){
       });
       const data=await res.json();
       if(!res.ok)throw new Error(data.error||"Could not update dispute.");
-      showToast&&showToast(decision==="approved"?"Dispute approved — grade restored.":"Dispute rejected — grade restored.");
+      showToast&&showToast(decision==="approved"?`Approved — Modified Grade ${d.requested_grade||""} now applies.`:"Dispute rejected — original grade stands.");
       setNoteFor(null);setNote("");
       await load();
       onChanged&&onChanged();
@@ -158,7 +170,7 @@ export function DisputesQueue({session, showToast, onChanged}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}}>
         <div>
           <h2 style={{fontSize:24,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>Dispute Review</h2>
-          <p style={{color:C.dim,fontSize:14}}>Inspectors' grade disputes. Approve or reject — either way the grade returns to display once resolved.</p>
+          <p style={{color:C.dim,fontSize:14}}>Inspectors' grade disputes. Approving records the inspector's proposed grade as a Modified Grade; the original AI grade is never changed.</p>
         </div>
         <button onClick={load} style={bGhost}>↻ Refresh</button>
       </div>
@@ -185,7 +197,8 @@ export function DisputesQueue({session, showToast, onChanged}){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:15,color:"#fff"}}>{d.inspector_name||"Unknown inspector"}</span>
-                    {d.grade&&<span style={{...tag(C.gold),fontSize:12,fontWeight:800,fontFamily:"monospace"}}>Disputed grade: {d.grade}</span>}
+                    {d.grade&&<span style={{...tag(C.gold),fontSize:12,fontWeight:800,fontFamily:"monospace"}}>Original: {d.grade}</span>}
+                    {d.requested_grade&&<span style={{...tag(d.status==="approved"?C.green:C.blue),fontSize:12,fontWeight:800,fontFamily:"monospace"}}>{d.status==="approved"?"Modified":"Proposed"}: {d.requested_grade}</span>}
                     <span style={{...tag(statusColor(d.status)),fontSize:11,textTransform:"capitalize"}}>{d.status}</span>
                   </div>
                   <div style={{color:C.dim,fontSize:12,marginBottom:8}}>📍 {d.property_address||"No address"} · filed {fmtWhen(d.created_at)}{d.filed_by_name?` by ${d.filed_by_name}`:""}</div>
@@ -210,7 +223,7 @@ export function DisputesQueue({session, showToast, onChanged}){
                   )}
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                     {noteFor!==d.id&&<button onClick={()=>{setNoteFor(d.id);setNote("");}} style={bGhost}>Add a note</button>}
-                    <button onClick={()=>resolve(d,"approved")} disabled={busyId===d.id} style={{...bGrn,opacity:busyId===d.id?0.6:1}}>{busyId===d.id?<><Spinner/> Working…</>:"✓ Approve"}</button>
+                    <button onClick={()=>resolve(d,"approved")} disabled={busyId===d.id} style={{...bGrn,opacity:busyId===d.id?0.6:1}}>{busyId===d.id?<><Spinner/> Working…</>:(d.requested_grade?`✓ Approve → ${d.requested_grade}`:"✓ Approve")}</button>
                     <button onClick={()=>resolve(d,"rejected")} disabled={busyId===d.id} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,background:C.red,color:"#fff",border:"none",borderRadius:8,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:busyId===d.id?0.6:1}}>{busyId===d.id?<><Spinner/> Working…</>:"✕ Reject"}</button>
                   </div>
                 </div>
