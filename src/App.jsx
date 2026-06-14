@@ -1793,8 +1793,8 @@ const isInspector=role==="inspector";
                           <ShareToEmailButton report={r} session={session} showToast={showToast}/>
                           <button style={{background:"none",border:"none",color:C.gold,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"inherit",whiteSpace:"nowrap",padding:"5px 4px"}} onClick={()=>viewReport(r)}>Full Review →</button>
                         </div>
-                        {(r.canFlag||r.impactedSale)&&(
-                          <div style={{marginTop:8}}>
+{(r.canFlag||r.impactedSale)&&(
+                          <div style={{marginTop:10,textAlign:"center"}}>
                             {r.canFlag?(
                               <button
                                 onClick={e=>{e.stopPropagation();toggleImpact(r);}}
