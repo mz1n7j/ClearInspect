@@ -924,3 +924,18 @@ function normalizeName(v) {
   }
   return s;
 }
+
+// Normalize a free-text date to YYYY-MM-DD, or "" if it can't be parsed
+// confidently. Keeps the inspection_date column clean for both AI-extracted
+// values and manual entry.
+function normalizeDate(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/); // MM/DD/YYYY
+  if (m) return `${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
+  const months = {january:"01",jan:"01",february:"02",feb:"02",march:"03",mar:"03",april:"04",apr:"04",may:"05",june:"06",jun:"06",july:"07",jul:"07",august:"08",aug:"08",september:"09",sept:"09",sep:"09",october:"10",oct:"10",november:"11",nov:"11",december:"12",dec:"12"};
+  m = s.match(/^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/); // Month DD, YYYY
+  if (m) { const mo = months[m[1].toLowerCase()]; if (mo) return `${m[3]}-${mo}-${m[2].padStart(2,"0")}`; }
+  return "";
+}
