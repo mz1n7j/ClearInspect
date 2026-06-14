@@ -1777,10 +1777,15 @@ const isInspector=role==="inspector";
                             <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.inspectorName}</div>
                             <div style={{color:C.dim,fontSize:12}}>{r.companyName||"Independent"} · {r.date}</div>
                           </div>
-                      {disputingIds.has(String(r.id))
+{disputingIds.has(String(r.id))
                             ? <span style={{...tag(C.blue),fontSize:13,fontWeight:800,padding:"3px 12px"}}>Disputing</span>
                             : analyzed
-                            ? <span style={{...tag(gc),fontSize:16,fontWeight:800,padding:"3px 12px",fontFamily:"monospace"}}>{grade}</span>
+                            ? (()=>{const mg=modifiedGrades.get(String(r.id));const mc=mg==="A"?C.green:mg==="B"?C.gold:mg==="C"?"#e67e22":C.red;return (
+                                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                                  <span style={{...tag(gc),fontSize:16,fontWeight:800,padding:"3px 12px",fontFamily:"monospace"}}>{grade}</span>
+                                  {mg&&<span title="Modified grade from an approved dispute" style={{...tag(mc),fontSize:11,fontWeight:800,padding:"2px 8px",fontFamily:"monospace",whiteSpace:"nowrap"}}>Modified: {mg}</span>}
+                                </div>
+                              );})()
                             : <span style={{...tag(C.gold),fontSize:10,fontWeight:700,padding:"4px 10px",whiteSpace:"nowrap"}}>⋯ Work in Progress</span>}
                         </div>
                         {analyzed&&a.balanceScore!==undefined&&a.balanceScore!==null&&<div style={{marginBottom:10}}><BalanceBar score={a.balanceScore}/></div>}
