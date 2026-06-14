@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { DisputeButton, DisputesQueue } from "./DisputeComponents";
 
 const genId = () => Math.random().toString(36).slice(2,10);
 const getSession = () => { try { return JSON.parse(localStorage.getItem("it_s")||"null"); } catch { return null; } };
@@ -1144,7 +1145,7 @@ export default function App() {
   const [sharedError,setSharedError]=useState("");
   const [registrySearch,setRegistrySearch]=useState("");
   const [propertyData,setPropertyData]=useState(null);
-  const [lookingUp,setLookingUp]=useState(false);
+  const [lookingUp,setLookingUp]=useState(false);   const [disputingIds,setDisputingIds]=useState(()=>new Set());    const loadDisputes=async(token)=>{     const t=token||session?.token;     if(!t)return;     try{       const res=await fetch("/api/disputes",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${t}`},body:JSON.stringify({action:"active"})});       const data=await res.json();       if(res.ok&&Array.isArray(data.reportIds))setDisputingIds(new Set(data.reportIds.map(String)));     }catch(e){console.error("Failed to load disputes:",e);}   };
 
   const lookupProperty=async(street,city,state,zip)=>{
     if(!street||!city||!state)return;
@@ -1183,7 +1184,7 @@ export default function App() {
 
   useEffect(()=>{
     const s=getSession();
-    if(s){setSession(s);loadRegistryReports(s.token);}
+    if(s){setSession(s);loadRegistryReports(s.token);loadDisputes(s.token);}
 
     // Handle return from Stripe signup checkout
     const params=new URLSearchParams(window.location.search);
@@ -1356,7 +1357,7 @@ export default function App() {
 
   const showToast=(msg,type="success")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
   const setField=k=>v=>setForm(f=>({...f,[k]:v}));
-  const onAuth=(profile,token)=>{const s={token,profile};saveSession(s);setSession(s);loadRegistryReports(token);};
+  const onAuth=(profile,token)=>{const s={token,profile};saveSession(s);setSession(s);loadRegistryReports(token);loadDisputes(token);};
   const signOut=()=>{clearSession();setSession(null);setView("home");showToast("Signed out.");setMobileMenu(false);};
   const navTo=v=>{setView(v);setMobileMenu(false);if(v==="upload")setUploadStep(0);};
 
