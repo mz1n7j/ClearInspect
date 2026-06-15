@@ -1643,7 +1643,8 @@ const isInspector=role==="inspector";
             <div style={cTitle}>Inspector Details</div>
             <Field label="Inspector Full Name" value={form.inspectorName} onChange={setField("inspectorName")} placeholder="John Smith" required missing={missing.inspectorName}/>
             <Field label="Company / Firm" value={form.companyName} onChange={setField("companyName")} placeholder="Apex Home Inspections LLC"/>
-            <Field label="License Number" value={form.licenseNo} onChange={setField("licenseNo")} placeholder="HI-20984 or TREC #12345"/>
+<Field label="License Number" value={form.licenseNo} onChange={setField("licenseNo")} placeholder="HI-20984 or TREC #12345"/>
+            <Field label="Inspection Date" value={form.inspectionDate} onChange={setField("inspectionDate")} type="date"/>
           </div>
           <div style={{...card,marginTop:14}}>
             <div style={cTitle}>Property Address</div>
