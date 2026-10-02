@@ -1587,14 +1587,15 @@ const isInspector=role==="inspector";
         <h2 style={{fontSize:"clamp(18px,3vw,22px)",fontWeight:700,letterSpacing:"-0.02em",marginBottom:6}}>Simple Pricing</h2>
         <p style={{color:C.dim,fontSize:14,marginBottom:18}}>For buyers, sellers, realtors, and inspectors.</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14,marginBottom:40}}>
-          {[
+                    {[
             {title:"Buyer / Seller",price:"$5/yr",color:C.green,features:["Browse all inspection reports","View inspector Balance Scores","Search reports by property address","$5 per year"],btn:"green",lbl:"Sign Up →"},
-            {title:"Realtor",price:"$5/mo or $50/yr",color:C.gold,features:["Upload & analyze inspection reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export · 10-year storage","$5/month or $50/year"],btn:"gold",lbl:"Sign Up →"},
-            {title:"Inspector",price:"$5/mo or $50/yr",color:C.blue,features:["Listed in verified inspector directory","Verified badge on your profile","Aggregate scores from all your reports","Realtors & buyers can find you","Yearly performance rankings","$5/month or $50/year"],btn:"blue",lbl:"Sign Up →"},
+            {title:"Realtor",price:"Free",sub:"through 2026 · then $5/mo or $50/yr",color:C.gold,features:["Upload & analyze inspection reports","Full AI performance reviews","Balance Score on every report","Auto email buyer, seller & agent","PDF export · 10-year storage","Free for the rest of 2026"],btn:"gold",lbl:"Sign Up →"},
+            {title:"Inspector",price:"Free",sub:"through 2026 · then $5/mo or $50/yr",color:C.blue,features:["Listed in verified inspector directory","Verified badge on your profile","Aggregate scores from all your reports","Realtors & buyers can find you","Yearly performance rankings","Free for the rest of 2026"],btn:"blue",lbl:"Sign Up →"},
           ].map(p=>(
             <div key={p.title} style={{...card,borderColor:`${p.color}30`,display:"flex",flexDirection:"column"}}>
               <div style={{color:p.color,fontSize:10,fontFamily:"monospace",letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:7}}>{p.title}</div>
-              <div style={{fontSize:"clamp(20px,3vw,24px)",fontWeight:800,color:"#fff",marginBottom:12}}>{p.price}</div>
+              <div style={{fontSize:"clamp(20px,3vw,24px)",fontWeight:800,color:"#fff",marginBottom:p.sub?2:12}}>{p.price}</div>
+              {p.sub&&<div style={{fontSize:11.5,color:C.dim,marginBottom:12}}>{p.sub}</div>}
               <div style={{flex:1,marginBottom:18}}>{p.features.map(f=><div key={f} style={{display:"flex",gap:8,fontSize:13,color:"#777",marginBottom:7}}><span style={{color:p.color,flexShrink:0}}>✓</span>{f}</div>)}</div>
               {p.btn==="green"&&<button style={bGrn} onClick={()=>setShowAuth(true)}>{p.lbl}</button>}
               {p.btn==="gold"&&<button style={{...bGold,width:"100%",justifyContent:"center"}} onClick={()=>setShowAuth(true)}>{p.lbl}</button>}
@@ -1891,7 +1892,7 @@ const isInspector=role==="inspector";
       {view==="directory"&&<main style={{maxWidth:960,margin:"0 auto",padding:"24px 16px 80px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
           <div><h2 style={{fontSize:24,fontWeight:800,marginBottom:4,letterSpacing:"-0.02em"}}>Inspector Directory</h2><p style={{color:C.dim,fontSize:14}}>Find verified, rated inspectors in your area.</p></div>
-          <button style={bGold} onClick={()=>{setAuthIntent({mode:"signup",role:"inspector"});setShowAuth(true);}}>Register as Inspector — $5/mo or $50/yr →</button>
+          <button style={bGold} onClick={()=>{setAuthIntent({mode:"signup",role:"inspector"});setShowAuth(true);}}>Register as Inspector — Free through 2026 →</button>
         </div>
         <div style={{textAlign:"center",padding:"60px 0",border:`1px dashed ${C.border}`,borderRadius:12}}>
           <div style={{fontSize:48,marginBottom:14}}>🔍</div>
