@@ -10,6 +10,22 @@ module.exports = async function handler(req, res) {
 
   const { action, role, email, name, licenseNumber, interval } = req.body;
 
+  // ── FREE PROMO: realtors & inspectors ride free through the rest of 2026 ──
+  // Implemented as a Stripe subscription trial, not a $0 price: the customer
+  // still enters a card at Checkout (so the account converts to a normal paid
+  // subscription automatically), but Stripe won't charge it until the trial
+  // ends. No Stripe dashboard changes needed — just this trial_end date.
+  const FREE_PROMO_ROLES = ["realtor", "inspector"];
+  const FREE_PROMO_TRIAL_END = Math.floor(new Date("2027-01-01T00:00:00Z").getTime() / 1000);
+  function promoTrialEndFor(roleRaw) {
+    const r = (roleRaw || "").toLowerCase();
+    if (!FREE_PROMO_ROLES.includes(r)) return null;
+    // Only matters if "now" is still before the promo end — once it's 2027
+    // this naturally stops applying and billing.js behaves exactly as before.
+    if (Math.floor(Date.now() / 1000) >= FREE_PROMO_TRIAL_END) return null;
+    return FREE_PROMO_TRIAL_END;
+  }
+
   // ── (role, interval) -> Stripe recurring Price ID, from env vars ──
   // Create these Prices in your Stripe dashboard, then set the env vars:
   //   STRIPE_PRICE_BUYER_YEARLY        ($5/year, recurring)   — buyers & sellers
@@ -37,7 +53,7 @@ module.exports = async function handler(req, res) {
     return { priceId: null, envName: null, interval: "yearly" };
   }
 
-  async function createSubscriptionCheckout({ priceId, customerEmail, metadata, successUrl, cancelUrl }) {
+  async function createSubscriptionCheckout({ priceId, customerEmail, metadata, successUrl, cancelUrl, trialEnd }) {
     const params = new URLSearchParams({
       mode: "subscription",
       "payment_method_types[0]": "card",
@@ -47,6 +63,12 @@ module.exports = async function handler(req, res) {
       success_url: successUrl,
       cancel_url: cancelUrl,
     });
+    if (trialEnd) {
+      params.append("subscription_data[trial_end]", String(trialEnd));
+      // Stripe requires an explicit behavior when a trialing subscription's
+      // first invoice would otherwise need a payment method charge at $0.
+      params.append("subscription_data[trial_settings][end_behavior][missing_payment_method]", "cancel");
+    }
     for (const [k, v] of Object.entries(metadata || {})) {
       const val = v == null ? "" : String(v);
       params.append(`metadata[${k}]`, val);
@@ -78,6 +100,7 @@ module.exports = async function handler(req, res) {
         customerEmail: email,
         metadata: { role: role || "buyer", email: email || "", name: name || "", licenseNumber: licenseNumber || "", interval: resolved },
         successUrl, cancelUrl,
+        trialEnd: promoTrialEndFor(role),
       });
       if (!ok) return res.status(400).json({ error: data.error?.message || "Stripe error" });
       return res.status(200).json({ url: data.url });
@@ -161,6 +184,7 @@ module.exports = async function handler(req, res) {
         metadata: { role: pRole, email: userData.email || "", interval: resolved },
         successUrl: `${SITE_URL}?subscribed=true`,
         cancelUrl: `${SITE_URL}?subscribed=cancelled`,
+        trialEnd: promoTrialEndFor(pRole),
       });
       if (!ok) return res.status(400).json({ error: data.error?.message || "Stripe error" });
       return res.status(200).json({ url: data.url });
