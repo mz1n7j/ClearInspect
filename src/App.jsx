@@ -1579,7 +1579,7 @@ const isInspector=role==="inspector";
         </div>
 
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:32}}>
-          {[{n:"1 in 4",l:"inspectors flagged"},{n:"$5/yr",l:"buyers & sellers"},{n:"$50/yr",l:"realtors & inspectors"},{n:"10 yrs",l:"data retention"}].map(s=>(
+          {[{n:"1 in 4",l:"inspectors flagged"},{n:"$5/yr",l:"buyers & sellers"},{n:"Free",l:"realtors & inspectors · thru 2026"},{n:"10 yrs",l:"data retention"}].map(s=>(
             <div key={s.l} style={{...cardSm,textAlign:"center"}}><div style={{fontSize:"clamp(18px,3vw,24px)",fontWeight:800,color:C.gold,fontFamily:"monospace",marginBottom:3}}>{s.n}</div><div style={{fontSize:11,color:C.dim}}>{s.l}</div></div>
           ))}
         </div>
